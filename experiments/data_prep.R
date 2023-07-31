@@ -13,7 +13,7 @@ bin_features <- function(data, features, n_bins) {
     list_of_mids <- feature_hist$mids
     binned_feature_col <- list_of_mids[findInterval(feature_col,
                                                     grid,
-                                                    left.open = TRUE,
+                                                    left.open = FALSE, # changed to FALSE to comply with binning of response
                                                     rightmost.closed = TRUE)]
     data_copy[,(feature):=binned_feature_col]
   }
