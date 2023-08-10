@@ -57,12 +57,12 @@ construct_hist <- function(data_grouped, step_size) {
     if (length(data_hist) == 0) {
       counts_hist <- rep_len(0, length(grid_hist) - 1)
       hist <- hist(0.5,
-                   breaks = grid_hist, right = TRUE,
+                   breaks = grid_hist, right = FALSE, # In the paper, we defined the binning intervals to be left-closed
                    plot = FALSE)
     }
     else {
       hist <- hist(data_hist,
-                   breaks = grid_hist, right = TRUE,
+                   breaks = grid_hist, right = FALSE, # In the paper, we defined the binning intervals to be left-closed
                    plot = FALSE)
       counts_hist <- hist$counts
     }

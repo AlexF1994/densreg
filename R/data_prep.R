@@ -1,9 +1,8 @@
 # define function which bins all features and replaces the actual values with bin centers
 bin_features <- function(data, features, n_bins) {
-  stopifnot(is.data.table(data))
-  data_copy <- data.table::copy(data)
+  data_copy <- copy(data)
   for (feature in features) {
-    feature_col <- data_copy[,..feature]
+    feature_col <- data_copy[,..feature][[1]]
     max_value <- max(feature_col)
     min_value <- min(feature_col)
     step_size <- (max_value - min_value) / n_bins
@@ -14,9 +13,9 @@ bin_features <- function(data, features, n_bins) {
     list_of_mids <- feature_hist$mids
     binned_feature_col <- list_of_mids[findInterval(feature_col,
                                                     grid,
-                                                    left.open = TRUE,
+                                                    left.open = FALSE, # changed to FALSE to comply with binning of response
                                                     rightmost.closed = TRUE)]
-    data_copy[,feature:=binned_feature_col]
+    data_copy[,(feature):=binned_feature_col]
   }
 
   data_copy
@@ -58,12 +57,12 @@ construct_hist <- function(data_grouped, step_size) {
     if (length(data_hist) == 0) {
       counts_hist <- rep_len(0, length(grid_hist) - 1)
       hist <- hist(0.5,
-                   breaks = grid_hist, right = TRUE,
+                   breaks = grid_hist, right = FALSE, # In the paper, we defined the binning intervals to be left-closed
                    plot = FALSE)
     }
     else {
       hist <- hist(data_hist,
-                   breaks = grid_hist, right = TRUE,
+                   breaks = grid_hist, right = FALSE, # In the paper, we defined the binning intervals to be left-closed
                    plot = FALSE)
       counts_hist <- hist$counts
     }
@@ -73,7 +72,7 @@ construct_hist <- function(data_grouped, step_size) {
   }
 
   dta_targets <- data.table::data.table(counts = unlist(list_of_counts, recursive = FALSE), # unlist to get data set
-                            share = unlist(list_of_mids, recursive = FALSE))
+                                        share = unlist(list_of_mids, recursive = FALSE))
   dta_targets
 }
 
