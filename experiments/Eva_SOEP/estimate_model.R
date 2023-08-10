@@ -12,7 +12,7 @@ library(mgcv)
 # load self-written smoother for mixed reference measure
 source("./R/mixed_density_smooth.R")
 # load functions used to prepare data appropriately to be used in Poisson model
-source("./experiments/data_prep.R")
+source("./R/data_prep.R")
 
 # load data, add missing variables and transform characters to ordered factors
 # (necessary for reference coding in gam(); lowest factor level is used as
