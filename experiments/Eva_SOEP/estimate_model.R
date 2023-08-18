@@ -45,7 +45,7 @@ dta_grouped <- dta[, group_id := .GRP,
                                          group_id)]
 
 dta_est <- construct_dataset(dta_grouped, response = list("share"),
-                             step_size = step_size)
+                             step_size = step_size) # In construct_dataset Gewichte ergänzen!!!
 
 # # Sanity check: number of covariate combinations
 # max(dta_est$group_id)
