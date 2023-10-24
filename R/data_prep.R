@@ -8,7 +8,7 @@ bin_features <- function(data, features, n_bins) {
     step_size <- (max_value - min_value) / n_bins
     grid <- seq(from = min_value, to = max_value, by = step_size)
     feature_hist <- hist(feature_col,
-                         breaks = grid, right = TRUE,
+                         breaks = grid, right = FALSE, # changed to FALSE to comply with binning of response
                          plot = FALSE)
     list_of_mids <- feature_hist$mids
     binned_feature_col <- list_of_mids[findInterval(feature_col,
@@ -50,10 +50,10 @@ construct_hist <- function(data_grouped, step_size) {
   list_of_counts <- list()
 
   for (i in 1:num_groups) {
-    data_group <- data_grouped[group_id == i, share]
-    counts_zero <- sum(data_group == 0)
-    counts_one <- sum(data_group == 1)
-    data_hist <- data_group[data_group > 0 & data_group < 1]
+    data_group <- data_grouped[group_id == i, c("share", "weighting_factor")]
+    counts_zero <- sum(data_group[share == 0, weighting_factor])
+    counts_one <- sum(data_group[share == 1, weighting_factor])
+    data_hist <- data_group[data_group$share > 0 & data_group$share < 1]
     if (length(data_hist) == 0) {
       counts_hist <- rep_len(0, length(grid_hist) - 1)
       hist <- hist(0.5,
@@ -61,9 +61,8 @@ construct_hist <- function(data_grouped, step_size) {
                    plot = FALSE)
     }
     else {
-      hist <- hist(data_hist,
-                   breaks = grid_hist, right = FALSE, # In the paper, we defined the binning intervals to be left-closed
-                   plot = FALSE)
+      hist <- weights::wtd.hist(data_hist$share, breaks = grid_hist, plot = FALSE,
+                                weight = data_hist$weighting_factor, right = FALSE) # In the paper, we defined the binning intervals to be left-closed
       counts_hist <- hist$counts
     }
     list_of_mids[[i]] <- c(0, hist$mids, 1)

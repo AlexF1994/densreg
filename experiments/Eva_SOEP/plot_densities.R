@@ -26,41 +26,41 @@ lty <- rep(c(1, 2, 4, 5), 9)
 # color to indicate share level (0; (0, 1); 1)
 color_breaks <- c("chartreuse2", "mediumblue", "red2")
 
-################################################################################
-################################# Plot Legends #################################
-################################################################################
-
-# Year legend 2 columns
-pdf(paste0(path, "year_legend_v_2.pdf"), width = 2, height = 3.7)
-par(mar = c(0, 0, 0, 0) + 0.1)
-plot(NULL, xaxt = 'n', yaxt = 'n', bty = 'n', ylab = '', xlab = '', xlim = 0:1, ylim = 0:1)
-legend("topleft",xpd = TRUE, legend = 1984:2016, text.col = color, lty = lty,
-       cex = 1, ncol = 2, bty = "n", col = color, seg.len = 1.6,
-       title = "year", title.col = 1)
-dev.off()
-
-# # Year legend 1 column (If regions are included, legend for plot with all 6 regions)
-# pdf(paste0(path, "year_legend_v_1.pdf"), width = 0.95, height = 7)
-# par(mar = c(0, 0, 0.5, 0))
+# ################################################################################
+# ################################# Plot Legends #################################
+# ################################################################################
+#
+# # Year legend 2 columns
+# pdf(paste0(path, "year_legend_v_2.pdf"), width = 2, height = 3.7)
+# par(mar = c(0, 0, 0, 0) + 0.1)
 # plot(NULL, xaxt = 'n', yaxt = 'n', bty = 'n', ylab = '', xlab = '', xlim = 0:1, ylim = 0:1)
 # legend("topleft",xpd = TRUE, legend = 1984:2016, text.col = color, lty = lty,
-#        cex = 1, ncol = 1, bty = "n", col = color, seg.len = 1.6,
+#        cex = 1, ncol = 2, bty = "n", col = color, seg.len = 1.6,
 #        title = "year", title.col = 1)
 # dev.off()
-
-# Income share legend
-share_levels <- latex2exp::TeX(c("income share earned by the woman:",
-                                 "$s = 0$: non-working women",
-                                 "$s \\in (0, 1)$: dual-earner households",
-                                 "$s = 1$: single-earner women"))
-pdf(paste0(path, "legend_pred_hist_years_h_long.pdf"), width = 11.4, height = 0.5)
-par(mar = c(0, 0, 0, 0))
-plot(NULL, xaxt = 'n', yaxt = 'n', bty = 'n', ylab = '', xlab = '', xlim = 0:1, ylim = 0:1)
-text(x = c(0.09, 0.39, 0.66, 0.94), y = 0.5, share_levels, col = c(1, color_breaks))
-segments(x0 = c(0.27, 0.825), y0 = c(0.5, 0.5), x1 = c(0.28, 0.83), y1 = c(0.5, 0.5),
-         col = color_breaks[c(1, 3)])
-plotrix::draw.circle(0.525, 0.5, 0.0035, border = color_breaks[2])
-dev.off()
+#
+# # # Year legend 1 column (If regions are included, legend for plot with all 6 regions)
+# # pdf(paste0(path, "year_legend_v_1.pdf"), width = 0.95, height = 7)
+# # par(mar = c(0, 0, 0.5, 0))
+# # plot(NULL, xaxt = 'n', yaxt = 'n', bty = 'n', ylab = '', xlab = '', xlim = 0:1, ylim = 0:1)
+# # legend("topleft",xpd = TRUE, legend = 1984:2016, text.col = color, lty = lty,
+# #        cex = 1, ncol = 1, bty = "n", col = color, seg.len = 1.6,
+# #        title = "year", title.col = 1)
+# # dev.off()
+#
+# # Income share legend
+# share_levels <- latex2exp::TeX(c("income share earned by the woman:",
+#                                  "$s = 0$: non-working women",
+#                                  "$s \\in (0, 1)$: dual-earner households",
+#                                  "$s = 1$: single-earner women"))
+# pdf(paste0(path, "legend_pred_hist_years_h_long.pdf"), width = 11.4, height = 0.5)
+# par(mar = c(0, 0, 0, 0))
+# plot(NULL, xaxt = 'n', yaxt = 'n', bty = 'n', ylab = '', xlab = '', xlim = 0:1, ylim = 0:1)
+# text(x = c(0.09, 0.39, 0.66, 0.94), y = 0.5, share_levels, col = c(1, color_breaks))
+# segments(x0 = c(0.27, 0.825), y0 = c(0.5, 0.5), x1 = c(0.28, 0.83), y1 = c(0.5, 0.5),
+#          col = color_breaks[c(1, 3)])
+# plotrix::draw.circle(0.525, 0.5, 0.0035, border = color_breaks[2])
+# dev.off()
 
 
 ################################################################################
@@ -70,6 +70,8 @@ dev.off()
 # Clr-predictions were calculated and retransformed in estimate_model.R
 pred_clr_j <- readRDS("./experiments/Eva_SOEP/Objects/pred_clr_j.rds")
 pred_j <- readRDS("./experiments/Eva_SOEP/Objects/pred_j.rds")
+# apply(pred_clr_j, 2, integrate_num)
+# apply(pred_j, 2, integrate_num)
 
 # west_east <- c((33 * 3 + 1):(33 * 3 + 33* 3), (33 * 3 * 4 + 1):(33 * 3 * 4 + 33 * 3))
 # ylim_west_east <- c(0, round(max(pred_j[, west_east], na.rm = TRUE), digits = 1))
@@ -100,11 +102,12 @@ get_param <- function(regions, up_down = 5) {
 # Function to plot several densities arranged in a matrix, using plot_densities
 # contained in ./Functions/help_functions.R
 plot_dens_i <- function (i, dens_matrix, ylab, ylim, cex, cex_legend,
-                         x_legend = "topright", y_legend = NULL, ...) {
+                         x_legend = "topright", y_legend = NULL,
+                         y_at = NULL, y_labels = NULL, ...) {
   plot_densities(dens_matrix, path = path, ylim = ylim, pdf = FALSE, main = "",
                  regions = regions[i], c_age = c_age[i], mar = mar[[i]],
                  xaxt = xaxt[i], yaxt = yaxt[i], las = 1, ylab = ylab, cex = cex,
-                 xlab = "", ...)
+                 xlab = "", y_at = y_at, y_labels = y_labels, ...)
   legend(x = x_legend, y = y_legend, legend = c(legend_text[i], legend_text_2[i]), bty = "n", cex = cex_legend)
 }
 
@@ -153,7 +156,8 @@ dev.off()
 pdf(paste0(path, "pred_West_East.pdf"), width = width, height = height)
 layout(matrix(seq_along(regions), ncol = 3, byrow = TRUE), widths = c(1, 0.85, 1))
 sapply(seq_along(regions), plot_dens_i, dens_matrix = pred_j, ylab = "",
-       ylim = ylim_all, cex = 0.8, cex_legend = 1, x_legend = 0.53, y_legend = 3)
+       ylim = ylim_all, cex = 0.8, cex_legend = 1, x_legend = 0.53, y_legend = 3,
+       y_at = seq(0, 2.5, by = 0.5))
 mtext(text = "predicted densities", side = 2, line = 39.5, at = ylim_all[2])
 mtext(text = "s: income share earned by the woman", side = 1, line = 3, at = -0.6)
 dev.off()
@@ -181,6 +185,7 @@ par(def.par)
 # For each covariate combination: Compute histogram on relative (i.e., density)
 # scale and add estimated density
 hist_data <- readRDS("./experiments/Eva_SOEP/Objects/hist_data.rds")
+
 share <- hist_data$share
 year <- c(rep(1984:2016, 3), rep(1991:2016, 3))
 c_age <- c(rep(c("0-6", "7-18", "other"), each = length(1984:2016)),
@@ -190,7 +195,7 @@ color <- c(rep(color, 3), rep(color[-(1:7)], 3))
 
 # Remove artificial NA-columns (corresponding to 1984-1990 in East Germany) for
 # single plots
-f_hat <- pred_j[, -which(apply(pred_j, 2, function(x) any(is.na(x))))]
+f_hat <- pred_j[, -(rep(c(100, 133, 166), each = 7) + 0:6)] # which(apply(pred_j, 2, function(x) any(is.na(x))))
 
 color_hist <- rep("grey", 100)
 color_hist[51] <- "red" # bar containing share of 0.5 is highlighted in red
@@ -201,12 +206,14 @@ manipulate({
   barplot(hist_data$dual_earner_dens[,i], width = max(diff(share)), space = 0,
           main = paste0(West_East[i], " ", year[i], ", c_age: ", c_age[i]),
           ylim = c(0, max(hist_data$zeros_dens[i], hist_data$dual_earner_dens[,i],
-                          hist_data$ones_dens[i], f_hat[, i]) + 0.010),
+                          hist_data$ones_dens[i], f_hat[, i], na.rm = TRUE) + 0.010),
           col = color_hist)
   axis(1)
   points(c(0, 1), c(hist_data$zeros_dens[i], hist_data$ones_dens[i]))
-  lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
-  points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  if (!any(is.na(f_hat[, i]))) {
+    lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
+    points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  }
 }, i = slider(1, length(year)))
 
 # Estimated conditional densities look reasonable
@@ -222,12 +229,14 @@ for(i in 1:99) {
   barplot(hist_data$dual_earner_dens[,i], width = max(diff(share)), space = 0,
           main = paste0(West_East[i], " ", year[i], ", c_age: ", c_age[i]),
           ylim = c(0, max(hist_data$zeros_dens[i], hist_data$dual_earner_dens[,i],
-                          hist_data$ones_dens[i], f_hat[, i]) + 0.010),
+                          hist_data$ones_dens[i], f_hat[, i], na.rm = TRUE) + 0.010),
           col = color_hist)
   axis(1)
   points(c(0, 1), c(hist_data$zeros_dens[i], hist_data$ones_dens[i]))
-  lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
-  points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  if (!any(is.na(f_hat[, i]))) {
+    lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
+    points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  }
 }
 dev.off()
 
@@ -237,11 +246,13 @@ for(i in 100:177) {
   barplot(hist_data$dual_earner_dens[,i], width = max(diff(share)), space = 0,
           main = paste0(West_East[i], " ", year[i], ", c_age: ", c_age[i]),
           ylim = c(0, max(hist_data$zeros_dens[i], hist_data$dual_earner_dens[,i],
-                          hist_data$ones_dens[i], f_hat[, i]) + 0.010),
+                          hist_data$ones_dens[i], f_hat[, i], na.rm = TRUE) + 0.010),
           col = color_hist)
   axis(1)
   points(c(0, 1), c(hist_data$zeros_dens[i], hist_data$ones_dens[i]))
-  lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
-  points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  if (!any(is.na(f_hat[, i]))) {
+    lines(share[2:101], f_hat[2:101, i], type = "l", col = color[i])
+    points(c(0, 1), f_hat[c(1, 102), i], col = color[i], pch = 4)
+  }
 }
 dev.off()

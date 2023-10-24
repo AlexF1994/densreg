@@ -23,8 +23,68 @@ path <- "./experiments/Eva_SOEP/Images/"
 
 model_soep <- readRDS("./experiments/Eva_SOEP/Objects/model_all_covariates_but_region.rds")
 
+### Confidence region?
+# library(stringr)
+# effect_names <- unique(str_extract(names(model_soep$coefficients), regex(".*(?=\\.[0-9]+)")))
+# effect_names <- effect_names[-which(is.na(effect_names))]
+#
+# intercept_ind <- which(grepl(paste0(effect_names[1], "."), names(model_soep$coefficients), fixed = TRUE))
+#
+# # X <- model.matrix(model)[, intercept_ind]
+# theta_hat <- model$coefficients[intercept_ind]
+#
+# # f_hat_clr <- c(X %*% theta_hat)
+# # f_hat <- exp(f_hat_clr) / mean(exp(f_hat_clr))
+#
+# # theta ~ N(theta_hat, Vc)
+# # => CR = {theta : (theta - theta_hat)^T V^{-1} (theta - theta_hat) <= chi^2_{1-alpha}(K_T)}
+# # An effect is significant, if 0 \notin CR
+#
+# # Das entspricht noch nicht unserer Theorie! In Simulation (woraus der Code
+# # kopiert ist) gab es keine Kovariablen, deshalb war theta = theta_T; Hier ist
+# # aber vermutlich die Transformation wie im Paper in 2.4 beschreiben, nötig
+# # -> Noch mal überprüfen/nachvollziehen, wenn wach und geistig fit
+# check_significance <- function(model, indices, type = c("Vc", "Vp"), alpha = 0.05) {
+#   type <- match.arg(type)
+#   if (type == "Vc") {
+#     V <- model$Vc[indices, indices, drop = FALSE]
+#   } else {
+#     V <- model$Vp[indices, indices, drop = FALSE]
+#   }
+#   theta_hat <- model$coefficients[indices]
+#   theta_diff <- matrix(0 - theta_hat, ncol = 1)
+#   V_inv <- solve(V)
+#   chi_statistic_V <- t(theta_diff) %*% V_inv %*% theta_diff
+#   check_coverage_V <- as.numeric(chi_statistic_V) <= qchisq(1-alpha, df = length(indices)) # is 0 covered?
+#
+#   return(list(significance = !(check_coverage_V), statistic = chi_statistic_V,
+#               quantile = qchisq(1-alpha, df = length(indices))))
+# }
+#
+# library(stringr)
+# effect_names <- sapply(model_soep$smooth, function(s) s$label) #unique(str_extract(names(model_soep$coefficients), regex(".*(?=\\.[0-9]+)")))
+# # effect_names <- effect_names[-which(is.na(effect_names))]
+#
+# # i = 4 (ti(share):c_age1): Covariance not invertible (system is computationally singular: reciprocal condition number = 1.5754e-17)
+# # i = 5 (ti(share):West_East_c_ageWest_2): Covariance not invertible (system is exactly singular: U[12,12] = 0)
+# # i = 6 (ti(share):West_East_c_ageWest_1): Covariance not invertible (system is exactly singular: U[12,12] = 0)
+# # i = 8 (ti(share):West_East_c_ageEast_2): Covariance not invertible (system is exactly singular: U[12,12] = 0)
+# # i = 9 (ti(share):West_East_c_ageEast_1): Covariance not invertible (system is exactly singular: U[12,12] = 0)
+# significance <- lapply(seq_along(effect_names)[-c(4:6, 8:9)], function(i) check_significance(model_soep, which(grepl(paste0(effect_names[i], "."), names(model_soep$coefficients), fixed = TRUE))))
+# names(significance) <- paste0(seq_along(effect_names)[-c(4:6, 8:9)], ": ", effect_names[-c(4:6, 8:9)])
+# # Not significant:
+# # i = 11 (ti(share,syear):West_EastEast)
+# # i = 12 (ti(share,syear):c_age2)
+# # i = 13 (ti(share,syear):c_age1)
+# # i = 14 (ti(share,syear):West_East_c_ageWest_2)
+# # i = 15 (ti(share,syear):West_East_c_ageWest_1)
+# # i = 16 (ti(share,syear):West_East_c_ageEast_3)
+# # i = 17 (ti(share,syear):West_East_c_ageEast_2)
+# # i = 18 (ti(share,syear):West_East_c_ageEast_1)
+
 # Compute effects to plot
 effects <- get_estimated_model_effects(model_soep, G = 100)
+saveRDS(effects, "./experiments/Eva_SOEP/Objects/estimated_effects.rds")
 
 # Color gradient over the 33 observed years: from dark purple (1980s) to light
 # purple (1990s), red/orange (2000s) to yellow (2016)
@@ -392,7 +452,7 @@ pdf(paste0(path, "estimated_year_c_age_clr.pdf"), width = 5, height = 6.9)
 layout(matrix(1:3, ncol = 1), heights = c(1, 0.74, 1))
 sapply(1:3, function(i) plot_effects(year_cgroup[[i]], col = color, lty = lty_year, pdf = FALSE,
                                      ylim = ylim_clr_year, mar = mar[[i]],
-                                     legend = legend_text[[i]], legend_x = "top",
+                                     legend = legend_text[[i]], legend_x = "bottom",
                                      legend_col = 1, legend_cex = 1.5, # y_at = -3:3,
                                      ylab = "", cex.axis = 1.5, cex.lab = 1.5,
                                      xaxt = xaxt[i], las = 1, abline_h = NULL))
@@ -449,9 +509,9 @@ layout(matrix(1:3, ncol = 1), heights = c(1, 0.74, 1))
 sapply(1:3, function(i) plot_effects(year_WestEast_cgroup[[i]], col = color,
                                      lty = lty_year, pdf = FALSE,
                                      mar = mar[[i]], ylim = ylim_clr_year_West_East_c_age,
-                                     legend = legend_text[[i]], legend_x = "bottom",
+                                     legend = legend_text[[i]], legend_x = "top",
                                      legend_col = 1, legend_cex = 1.5,
-                                     y_at = seq(-1.5, 0.5, by = 0.5),
+                                     # y_at = seq(-1.5, 0.5, by = 0.5),
                                      ylab = "", cex.axis = 1.5, cex.lab = 1.5,
                                      xaxt = xaxt[i], las = 1, abline_h = NULL))
 mtext(text = y_labels_West, side = 2, line = 4.5, at = at_clr_year_West_East_c_age, cex = 1)
@@ -462,9 +522,9 @@ layout(matrix(1:3, ncol = 1), heights = c(1, 0.74, 1))
 sapply(4:6, function(i) plot_effects(year_WestEast_cgroup[[i]], col = color,
                                      lty = lty_year, pdf = FALSE,
                                      mar = mar[[i-3]], ylim = ylim_clr_year_West_East_c_age,
-                                     legend = legend_text[[i-3]], legend_x = "bottom",
+                                     legend = legend_text[[i-3]], legend_x = "top",
                                      legend_col = 1, legend_cex = 1.5,
-                                     y_at = seq(-1.5, 0.5, by = 0.5),
+                                     # y_at = seq(-1.5, 0.5, by = 0.5),
                                      ylab = "", cex.axis = 1.5, cex.lab = 1.5,
                                      xaxt = xaxt[i-3], las = 1, abline_h = NULL))
 mtext(text = y_labels_East, side = 2, line = 4.5, at = at_clr_year_West_East_c_age, cex = 1)
@@ -504,6 +564,7 @@ sapply(1:3, function(i) plot_effects(year_West_cgroup_intercept[[i]], col = colo
                                      effect_matrix_d = year_West_cgroup_intercept_d[[i]],
                                      legend = legend_text[[i]], legend_x = "topright",
                                      legend_col = 1, legend_cex = 1.5,
+                                     y_at = seq(0, 2.5, by = 0.5),
                                      ylab = "", cex.axis = 1.5, cex.lab = 1.5,
                                      xaxt = xaxt[i], las = 1))
 mtext(text = y_labels_West, side = 2, line = 4.5, at = 1.57 * ylim[2], cex = 1)
@@ -517,6 +578,7 @@ sapply(1:3, function(i) plot_effects(year_East_cgroup_intercept[[i]], col = colo
                                      effect_matrix_d = year_East_cgroup_intercept_d[[i]],
                                      legend = legend_text[[i]], legend_x = "topright",
                                      legend_col = 1, legend_cex = 1.5,
+                                     y_at = seq(0, 2.5, by = 0.5),
                                      ylab = "", cex.axis = 1.5, cex.lab = 1.5,
                                      xaxt = xaxt[i], las = 1))
 mtext(text = y_labels_East, side = 2, line = 4.5, at = 1.57 * ylim[2], cex = 1)
@@ -524,3 +586,4 @@ dev.off()
 
 par(def.par)
 rm(list = ls())
+

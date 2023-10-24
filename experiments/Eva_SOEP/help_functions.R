@@ -235,22 +235,27 @@ my_minus <- function(x, y, w = 0.5, col = NULL, lty = 1, lwd = 1, ...) {
 #   c_age -> 18 plots in total)
 # mod: boolean value; if TRUE "_mod" is added to the file name, otherwise nothing
 #   changes in the function (this is to adapt the y-range for examples in paper)
-# xaxt: should the x-axis be plotted? (as in plot())
+# xaxt, yaxt: should x- and y-axes be plotted? (as in plot())
 # col_ticks: vector of length 3 specifying the colors of the ticks and labels
 #   for s = 0, s in (0, 1), s = 1 on the x-axis; The second color is also used
 #   for the axis line between 0 and 1
+# y_labels, y_at: Possibility to specify the labels and positions of the y-axis
+#   if both are identical (each tick is labeled by the corresponding number), it's
+#   sufficient to just give just one of the two arguments; These arguments are
+#   ignored, if yaxt = "n"!
 # mar: as in par()
-# ...: Further arguments passed to matplot/plot (e.g. yaxt, las, etc.)
+# ...: Further arguments passed to matplot/plot (e.g. las, etc.)
 plot_densities <- function(dens_matrix, pdf = TRUE, name = NULL,
   width = 5, height = 3.5, path = "./Images/", color = viridis::plasma(33),
   ylim = NULL, lty = rep(c(1, 2, 4, 5), 9), main = NULL,
   ylab = NULL, estimation_points = seq(from = 0.005, to = 0.995, by = 0.01),
   regions = c("northwest", "west", "southwest", "south", "east", "northeast"),
   c_age = 1:3, cols = 1:33, single = FALSE, mod = FALSE, xaxt = c("s", "n"),
-  col_ticks = c("chartreuse2", "mediumblue", "red2"), mar = NULL, cex = 1,
-  xlab = "s: income share earned by the woman", ...) {
+  col_ticks = c("chartreuse2", "mediumblue", "red2"), yaxt = c("s", "n"), y_labels = NULL,
+  y_at = NULL, mar = NULL, cex = 1, xlab = "s: income share earned by the woman", ...) {
 
   xaxt <- match.arg(xaxt)
+  yaxt <- match.arg(yaxt)
 
   # get labels
   matrix_name <- deparse(substitute(dens_matrix))
@@ -284,6 +289,22 @@ plot_densities <- function(dens_matrix, pdf = TRUE, name = NULL,
     col_ticks <- rep(col_ticks, 3)
   }
 
+  if (yaxt == "n") {
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      # warning("Argument yaxt is 'n', thus arguments 'y_labels' and 'y_at' are ignored!")
+      y_labels <- y_at <- NULL
+    }
+  } else {
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      yaxt <- "n"
+    }
+    if (!is.null(y_labels) & is.null(y_at)) {
+      y_at <- y_labels
+    } else if(is.null(y_labels) & !is.null(y_at)) {
+      y_labels <- y_at
+    }
+  }
+
   if (any(c("West", "East") %in% regions)) {
     stopifnot("West and East can not be used with specific regions" = length(regions) <= 2)
     all_regions <- c("West", "East")
@@ -312,17 +333,20 @@ plot_densities <- function(dens_matrix, pdf = TRUE, name = NULL,
         }
         if (isTRUE(pdf)) {
           pdf(file = paste0(path, name, "_", regions[j], "_", k, ifelse(isTRUE(mod), "_mod", ""), ".pdf"),
-            width = width, height = height)
+              width = width, height = height)
         }
         par(mar = mar, cex = cex)
         ticks <- seq(0, 1, by = 0.2)
         matplot(estimation_points, plot_matrix[2:101, cols], type = "l", col = color[cols],
           main = main_plot, cex.main = 1, xlab = xlab, ylim = ylim, lty = lty, xlim = c(0, 1),
-          ylab = ylab, xaxt = "n", ...)
+          ylab = ylab, xaxt = "n", yaxt = yaxt, ...)
         if (xaxt == "s") {
           axis(side=1, at = seq(0, 1, by = 0.2), labels = FALSE, lwd.ticks = 0, col = col_ticks[2], ...)
           Map(axis, side=1, at = seq(0.2, 0.8, by = 0.2), col.ticks = col_ticks[2], col.axis = col_ticks[2], ...)
           Map(axis, side=1, at = c(0, 1), labels = format(c(0, 1), nsmall = 1), col.ticks = col_ticks[c(1, 3)], col.axis = col_ticks[c(1, 3)], ...)
+        }
+        if (!is.null(y_labels) & !is.null(y_at)) {
+          axis(2, at = y_at, labels = y_labels, ...)
         }
         my_minus(c(-0.005, 1.005), t(plot_matrix[c(1, 102), cols]), w = 0.02, col = color[cols], lwd = 0.9)
         abline(h = 0, col = "grey", lwd = 0.5)
@@ -337,17 +361,21 @@ plot_densities <- function(dens_matrix, pdf = TRUE, name = NULL,
             main_plot <- main
           }
           if (isTRUE(pdf)) {
-            pdf(file = paste0(path, name, "_", regions[j], "_", k, "_", i + 1983, ifelse(isTRUE(mod), "_mod", ""), ".pdf"),
+            pdf(file = paste0(path, name, "_", regions[j], "_", k, "_", i + 1983,
+                              ifelse(isTRUE(mod), "_mod", ""), ".pdf"),
               width = width, height = height)
           }
           par(mar = mar, cex = cex)
           plot(estimation_points, plot_matrix[2:101, i], type = "l", col = color[i],
-            main = main_plot,  cex.main = 1, xlab = xlab,
-            ylim = ylim, lty = lty[i], xlim = c(0, 1), ylab = ylab, xaxt = "n", ...)
+               main = main_plot,  cex.main = 1, xlab = xlab, ylim = ylim, lty = lty[i],
+               xlim = c(0, 1), ylab = ylab, xaxt = "n", yaxt = yaxt, ...)
           if (xaxt == "s") {
             axis(side=1, at = seq(0, 1, by = 0.2), labels = FALSE, lwd.ticks = 0, col = col_ticks[2], ...)
             Map(axis, side=1, at = seq(0.2, 0.8, by = 0.2), col.ticks = col_ticks[2], col.axis = col_ticks[2], ...)
             Map(axis, side=1, at = c(0, 1), labels = format(c(0, 1), nsmall = 1), col.ticks = col_ticks[c(1, 3)], col.axis = col_ticks[c(1, 3)], ...)
+          }
+          if (!is.null(y_labels) & !is.null(y_at)) {
+            axis(2, at = y_at, labels = y_labels, ...)
           }
           my_minus(c(-0.005, 1.005), t(plot_matrix[c(1, 102), i]), w = 0.02, col = color[i], lwd = 0.9)
           abline( h = 0, col = "grey", lwd = 0.5)
@@ -395,7 +423,8 @@ plot_densities <- function(dens_matrix, pdf = TRUE, name = NULL,
 # xaxt, yaxt: should the x- and y-axes be plotted? (as in plot())
 # y_labels, y_at: Possibility to specify the labels and positions of the y-axis
 #   if both are identical (each tick is labeled by the corresponding number), it's
-#   sufficient to just give just one of the two arguments
+#   sufficient to just give just one of the two arguments; These arguments are
+#   ignored, if yaxt = "n"!
 # lty: line type for each histogram "interval"; Should have either length 1 (then the
 #   same line type is used for all intervals) or number of intervals (nrow(hist_data))
 # legend: boolean value indicating whether a legend should be plotted at the right side of the plot
@@ -414,6 +443,8 @@ plot_histograms_per_year <- function(hist_data, pdf = TRUE, path = NULL, name = 
                                      cex = 1, xlab = "year", ...) {
 
   plot_type <- match.arg(plot_type)
+  xaxt <- match.arg(xaxt)
+  yaxt <- match.arg(yaxt)
   year <- seq(ifelse(all_years, 1984, 1991), 2016)
   year_5 <- seq(ifelse(all_years, 1985, 1995), 2015, by = 5)
   xcol_5 <- xcol[seq(ifelse(all_years, 2, 12), 32, by = 5)] # yields colors corresponding to 1985, 1990, ..., 2015 or 1995, 2000, ..., 2015
@@ -432,11 +463,27 @@ plot_histograms_per_year <- function(hist_data, pdf = TRUE, path = NULL, name = 
   if (is.null(ylim)) {
     ylim <- c(0, max(hist_data, na.rm = TRUE))
   }
-  if (!is.null(y_labels) | !is.null(y_at)) {
-    yaxt_intern <- "n"
+
+  if (yaxt == "n") {
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      # warning("Argument yaxt is 'n', thus arguments 'y_labels' and 'y_at' are ignored!")
+      y_labels <- y_at <- NULL
+    }
   } else {
-    yaxt_intern <- yaxt
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      yaxt <- "n"
+    }
+    if (!is.null(y_labels) & is.null(y_at)) {
+      y_at <- y_labels
+    } else if(is.null(y_labels) & !is.null(y_at)) {
+      y_labels <- y_at
+    }
   }
+  # if (!is.null(y_labels) | !is.null(y_at)) {
+  #   yaxt_intern <- "n"
+  # } else {
+  #   yaxt_intern <- yaxt
+  # }
 
   if (pdf) {
     pdf(file = paste0(path, name, ".pdf"), width = width, height = height)
@@ -452,7 +499,7 @@ plot_histograms_per_year <- function(hist_data, pdf = TRUE, path = NULL, name = 
   vec <- seq_len(n)[-2]
   plot(year, hist_data[2, ], type = type, col = col[2], xaxt = "n", xlab = xlab,
        ylim = ylim, pch = ifelse(is.null(w), pch[2], pch[1]), cex = cex_inner,
-       cex.main = 1, lty = lty[2], yaxt = yaxt_intern, ...)
+       cex.main = 1, lty = lty[2], yaxt = yaxt, ...) # yaxt = yaxt_intern
 
   if (type == "p") {
     if (!is.null(w)) {
@@ -483,11 +530,11 @@ plot_histograms_per_year <- function(hist_data, pdf = TRUE, path = NULL, name = 
     Map(axis, side=1, at = year_5, labels = year_5, lwd.ticks = 2,
       col.ticks = xcol_5, col.axis =  xcol_5)
   }
-  if (!is.null(y_labels) & is.null(y_at)) {
-    y_at <- y_labels
-  } else if(is.null(y_labels) & !is.null(y_at)) {
-    y_labels <- y_at
-  }
+  # if (!is.null(y_labels) & is.null(y_at)) {
+  #   y_at <- y_labels
+  # } else if(is.null(y_labels) & !is.null(y_at)) {
+  #   y_labels <- y_at
+  # }
   if (!is.null(y_labels) & !is.null(y_at)) {
     axis(2, at = y_at, labels = y_labels, ...)
   }
@@ -597,7 +644,8 @@ plot_for_region_c_age <- function(j, k, all_years = TRUE, breaks = NULL, pdf = T
 # yaxt: should the y axis been drawn? ("s": yes, "n": no)
 # y_labels, y_at: Possibility to specify the labels and positions of the y-axis
 #   if both are identical (each tick is labeled by the corresponding number), it's
-#   sufficient to just give just one of the two arguments
+#   sufficient to just give just one of the two arguments; These arguments are
+#   ignored, if yaxt = "n"!
 # ...: Further plot arguments (passed to matplot)
 plot_effects <- function(effect_matrix, pdf = TRUE, name = NULL, width = 5,
   height = 3, path = "./Images/", type = c("joint", "continuous"), effect_matrix_d = NULL,
@@ -609,13 +657,14 @@ plot_effects <- function(effect_matrix, pdf = TRUE, name = NULL, width = 5,
   legend_seg.len = 2, main = NULL, col, lty = 1, lwd = 1, ylab = NULL, ylim = NULL,
   xlab = "s: income share earned by the woman", mar = NULL,
   odds = FALSE, G = 100, abline_h = 0, abline_v = NULL, abline_col = "grey", abline_lty = 1,
-  add_geom_mean = FALSE, lty_geom_mean = 1, yaxt = "s", y_labels = NULL, y_at = NULL, ...) {
+  add_geom_mean = FALSE, lty_geom_mean = 1, yaxt = c("s", "n"), y_labels = NULL, y_at = NULL, ...) {
 
   if(!is.matrix(effect_matrix)) {
     effect_matrix <- matrix(effect_matrix, nrow = 1)
   }
 
   type <- match.arg(type)
+  yaxt <- match.arg(yaxt)
 
   step_size <- 1 / G
   estimation_points = seq(step_size / 2, 1 - step_size / 2, length.out = G)
@@ -659,11 +708,26 @@ plot_effects <- function(effect_matrix, pdf = TRUE, name = NULL, width = 5,
     }
   }
 
-  if (!is.null(y_labels) | !is.null(y_at)) {
-    yaxt_intern <- "n"
+  if (yaxt == "n") {
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      # warning("Argument yaxt is 'n', thus arguments 'y_labels' and 'y_at' are ignored!")
+      y_labels <- y_at <- NULL
+    }
   } else {
-    yaxt_intern <- yaxt
+    if (!is.null(y_labels) | !is.null(y_at)) {
+      yaxt <- "n"
+    }
+    if (!is.null(y_labels) & is.null(y_at)) {
+      y_at <- y_labels
+    } else if(is.null(y_labels) & !is.null(y_at)) {
+      y_labels <- y_at
+    }
   }
+  # if (!is.null(y_labels) | !is.null(y_at)) {
+  #   yaxt_intern <- "n"
+  # } else {
+  #   yaxt_intern <- yaxt
+  # }
 
   if (type == "joint") {
     continuous <- 2:(ncol(effect_matrix) - 1)
@@ -682,7 +746,7 @@ plot_effects <- function(effect_matrix, pdf = TRUE, name = NULL, width = 5,
   }
   par(mar = mar)
   matplot(estimation_points, plot_matrix, type = "l", main = main, lty = lty, lwd = lwd,
-          ylim = ylim, ylab = ylab, xlab = xlab, col = col, yaxt = yaxt_intern, ...)
+          ylim = ylim, ylab = ylab, xlab = xlab, col = col, yaxt = yaxt, ...) # yaxt = yaxt_intern
   abline(h = abline_h, v = abline_v, col = abline_col, lty = abline_lty, lwd = 0.5)
 
   if (!is.null(y_labels) & is.null(y_at)) {
@@ -1230,6 +1294,130 @@ get_estimated_model_effects <- function(model, G = 100) {
               diff_in_diff_1 = diff_in_diff_1, diff_in_diff_2 = diff_in_diff_2,
               diff_in_diff_1_pdf = diff_in_diff_1_pdf, diff_in_diff_2_pdf = diff_in_diff_2_pdf,
               diff_in_diff_1_d_pdf = diff_in_diff_1_d_pdf, diff_in_diff_2_d_pdf = diff_in_diff_2_d_pdf))
+}
+
+# check_significance checks whether an estimated effect (which might be constructed
+# from different estimated smooth terms of a gam-model) is significant, i.e.,
+# given the asymptotic normal distribution of a coefficient vector theta ~ N(theta_hat, V),
+# which is identifiable with the respective effect of interest, the function checks,
+# whether the vector of only 0s is contained in
+#   CR = {theta : (theta - theta_hat)^T V^{-1} (theta - theta_hat) <= chi^2_{1-alpha}(K_T)}
+# where K_T is the length of the coefficient vector
+#
+# Function arguments:
+# model: object of class "gam"
+# n_smooth: vector of smooth terms to be added (positive) or subtracted (negative)
+# n_x: list of same length as the vector n_smooth containing column numbers
+#      corresponding to a specific covariate value in the marginal design matrix
+#      (e.g., for year: n_x = 8 corresponds to the default year 1991 in West
+#      Germany); defaults to all columns for each smoother
+# alpha: significance level
+# type: variance to be used (Vc: smoothing-parameter corrected version, Vp:
+#       "normal" version)
+# n_cov: number of different covariate combinations
+# effect: predicted effect for comparison (sanity check, whether transformations
+#       yield same result)
+check_significance <- function(model, n_smooth, n_x = NULL, alpha = 0.05,
+                               type = c("Vc", "Vp"), n_cov = NULL, effect = NULL) {
+  type <- match.arg(type)
+  K_T <- ncol(model$smooth[[1]]$margin[[1]]$X)
+  if (is.null(n_cov)) {
+    n_cov <- length(unique(model$model$`as.factor(group_id)`))
+  }
+  n_x_signs <- sapply(n_smooth, sign)
+  n_smooth <- sapply(n_smooth, abs)
+  K_all_j_K_T <- length(coefficients(model_soep)[-(1:n_cov)])
+  ind_all_j_K_T <- unlist(sapply(model_soep$smooth, function(s) (s$first.para):(s$last.para)))
+  V_all_j_K_T <- if (type == "Vc") {
+    model_soep$Vc[ind_all_j_K_T, ind_all_j_K_T, drop = FALSE]
+  } else {
+    model_soep$Vp[ind_all_j_K_T, ind_all_j_K_T, drop = FALSE]
+  }
+  theta_all_j_K_T <- matrix(model_soep$coefficients[ind_all_j_K_T], ncol = 1)
+
+  smooth <- lapply(n_smooth, function(n) model$smooth[[n]])
+  b <- lapply(seq_along(smooth), function(s) {
+    if (!is.null(n_x[[s]])) {
+      if (nrow(unique(smooth[[s]]$margin[[1]]$X)) != 27) {
+        matrix(unique(smooth[[s]]$margin[[1]]$X)[n_x[[s]], ], nrow = length(n_x[[s]]))
+      } else {
+        matrix(unique(smooth[[s]]$margin[[1]]$X)[n_x[[s]] + 1, ], nrow = length(n_x[[s]])) # Effects for East have 1 column for West Germany, remaining 26 for East -> remove first column
+      }
+    } else {
+      if (nrow(unique(smooth[[s]]$margin[[1]]$X)) != 27) {
+        unique(smooth[[s]]$margin[[1]]$X)
+      } else {
+        unique(smooth[[s]]$margin[[1]]$X)[-1,]
+      }
+    }
+  })
+  n_rows_b <- sapply(b, nrow)
+  if (all(c(26, 33) %in% n_rows_b)) {
+    b[[which(n_rows_b == 33)]] <- b[[which(n_rows_b == 33)]][-(1:7),]
+  }
+
+  ind <- lapply(smooth, function(s) (s$first.para):(s$last.para))
+  ind_ <- lapply(ind, function(i) i - n_cov)
+  K_effects_K_T <- lengths(ind)
+  A <- lapply(seq_along(smooth), function(s) {
+    if (length(smooth[[s]]$margin) == 1) {
+      list(diag(K_T))
+    } else if (length(smooth[[s]]$margin) == 2) {
+      lapply(seq_len(nrow(b[[s]])), function(i) kronecker(t(b[[s]][i, ]), diag(K_T)))
+    } else {
+      stop("Length of margins must be 1 or 2.")
+    }
+  })
+  # get all sublists to same length (technical reasons: for easily adding them
+  # using Reduce and lapply)
+  if (length(unique(lengths(A))) > 1) {
+    for (i in seq_along(A))
+      if (length(A[[i]]) == 1)
+        A[[i]] <- rep(A[[i]], max(sapply(b, nrow)))
+  }
+  stopifnot(length(unique(lengths(A))) == 1)
+
+  S <- lapply(seq_along(ind), function(s) {
+    K <- K_effects_K_T[s]
+    S <- matrix(0, nrow = K, ncol = K_all_j_K_T)
+    S[seq_len(K), ind_[[s]]] <- diag(K)
+    return(S)
+  })
+  A_S <- lapply(seq_along(A),
+                function(i) lapply(seq_along(A[[i]]),
+                                   function(j) n_x_signs[i] * A[[i]][[j]] %*% S[[i]]))
+
+  sums_A_S <- list()
+  for (i in seq_len(max(lengths(A_S)))) {
+    sums_A_S[[i]] <- Reduce("+", lapply(seq_len(length(A_S)), function(j) A_S[[j]][[i]]))
+  }
+  theta_T <- lapply(sums_A_S, function(X) X %*% theta_all_j_K_T)
+  stopifnot(all(sapply(theta_T, nrow) == K_T)) # check whether dimension is correct
+  theta_diff <- lapply(theta_T, function(t) matrix(0 - t, ncol = 1))
+  V_T <- lapply(sums_A_S, function(X) X %*% V_all_j_K_T %*% t(X))
+  V_T_inv <- lapply(V_T, function(V) try(solve(V), silent = TRUE))
+
+  chi_statistic <- lapply(seq_along(theta_T),
+                          function(i) ifelse("try-error" %in% class(V_T_inv[[i]]),
+                                             NA,
+                                             t(theta_diff[[i]]) %*% V_T_inv[[i]] %*% theta_diff[[i]]))
+  significance <- lapply(seq_along(theta_T),
+                         function(i) ifelse("try-error" %in% class(V_T_inv[[i]]),
+                                            NA,
+                                            as.numeric(chi_statistic[[i]]) > qchisq(1-alpha, df = K_T)))
+  if (!is.null(effect)) {
+    b_T <- unique(model_soep$smooth[[1]]$margin[[1]]$X)
+    if (is.vector(effect)) {
+      effect <- matrix(effect, nrow = length(theta_T))
+    }
+    if(!isTRUE(all.equal(t(sapply(theta_T, function(t) (b_T %*% t))), effect))) {
+      warning("Transformed matrices don't yield same effect as provided!")
+    }
+  }
+  return(list(significant = significance, statistic = chi_statistic,
+              V_T = V_T, V_T_inv = V_T_inv, theta_T = theta_T,
+              A_S = A_S, sums_A_S = sums_A_S, ind = ind,
+              labels = sapply(smooth, function(s) s$label)))
 }
 
 # # get_West_East_year_effects calculates predictions for West/East federal states over
