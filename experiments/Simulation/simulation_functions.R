@@ -195,12 +195,26 @@ source("../mixed_density_smooth.R")
 # - theta, knots, ord: vector of coefficients, vector of knots, and spline order
 #     determining predictor (if sample_type = "multinomial") or density (if
 #     sample_type = "density").
-# - pen_ord: order of differences to penalize in gam() (corresponds to m[2] in gam())
+# - pen_ord: order of differences to penalize in gam() (corresponds to m[2] in gam(..., ti()))
 # - N: sample size
 # - step_size: width of histogram bins
 # - alpha: determinces significance level (1 - alpha) for checking whether confidence
 #     region covers true theta
 # - sp: smoothing parameter used for ti() in gam()
+# - norm_true: norm of true density of simulation scenario for computing the
+#     relMSE; defaults to NULL, in which case it is computed by the function
+#     (since we perform simulations based on the same true density with different
+#     observation numbers and bin width, the same norm would be computed several
+#     times, thus, it saves time to compute it once and then pass it to the function)
+# - bs: type of basis functions used for the model; Default "md" corresponds to
+#     our mixed density smoother, "ad" to adaptive smooths (based on P-splines
+#     where the smoothing parameter itself is evaluated smoothly via P-splines);
+#     "ad" is just a "quick-and-dirty"-solution, using a sum-to-zero constraint
+#     (which is an approximation of the actual integrate-to-zero constraint) to
+#     check, whether this may be a solution for the penalized estimation. First
+#     results indicate that it seems not to improve the coverage rates...
+# - ad_m: Argument m for bs = "ad", specifying the dimension of the P-spline basis
+#     used for the smoothing parameter. If bs = "md" this argument is ignored
 run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
                            knots, ord = 4, pen_ord = 2, N = 10000, step_size = 0.01,
                            alpha = 0.05, sp = NULL, norm_true = NULL,
