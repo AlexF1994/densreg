@@ -2,124 +2,94 @@
 ################################## Functions ###################################
 ################################################################################
 
+source("./densities.R")
+
 ### Functions to construct true underlying density in the span of a transformed
 ### B-Spline basis, i.e., of the form B^T theta. To obtain a nicely shaped
 ### true density, we interpolate a density from a beta-distribution
 
-# bs_L20 creates a B-spline basis transformed to fulfill the integrate-to-zero
-# constraint. Arguments are the same as in splines:splineDesign:
-# - x: a numeric vector of values at which to evaluate the basis functions or
-#   derivatives. The values in x must be between the “inner” knots knots[ord] and
-#   knots[ length(knots) - (ord-1)].
-# - knots: a numeric vector of (inner and outer) knot positions (which will be
-#   sorted increasingly if needed)
-# - ord: a positive integer giving the order of the spline function. This is the
-#   number of coefficients in each piecewise polynomial segment, thus a cubic
-#   spline has order 4. Defaults to 4.
-# Value: A matrix with length(x) rows and length(knots) - ord - 1 columns. The i'th
-# row of the matrix contains the evaluations of the constrained spline functions
-# (defined by the knot vector and the order) at the i'th value of x.
-
-bs_L20 <- function(x, knots, ord = 4) {
-  C <- sapply(1:(length(knots) - ord), function(j) integrate(function(x)
-    splines::splineDesign(knots = knots, x, ord = ord, derivs = 0)[, j],
-    lower = knots[ord], upper = knots[length(knots) - (ord-1)])$value)
-  Z <- MASS::Null(C)
-  X_L20 <- splines::splineDesign(knots = knots, x, ord = ord, derivs = 0) %*% Z
-}
-
-# true density to interpolate (we use a beta distribution)
-f_0_beta <- function(t, a, b) {
-  dbeta(t, a, b)
-}
-
-f_0_line <- function(t, a = 0.1 , b) {
-  b <- 1 - 0.5 * a
-  return(b + a * t)
-}
-
-# clr transformation of true density
-f_0_clr <- function(t, a = 3, b = 3) {
-  int_log_f_0 <- integrate(function(x, a, b) log(f_0(x, a, b)),
-                           lower = 0, upper = 1, a = a, b = b)$value
-  log(f_0(t, a, b)) - int_log_f_0
-}
-
-# interpolate_clr constructs the spline basis expansion using L^2_0 basis functions
-# for a given coefficient vector theta
-interpolate_clr <- function(x, theta, knots, ord = 4) {
-  bs_L20(x, knots, ord = ord) %*% theta
-}
-
-# interpolate applies the inverse clr transformation of interpolate_clr
-interpolate <- function(x, theta, knots, ord = 4) {
-  int_exp_f_clr <- integrate(function(x, theta, knots, ord)
-    exp(interpolate_clr(x, theta, knots, ord)),
-    lower = 0, upper = 1, theta = theta, knots = knots, ord = ord)$value
-  exp(interpolate_clr(x, theta, knots, ord)) / int_exp_f_clr
-}
-
 # get_knots computes regular knots for usage with a (constrained) B-spline basis.
 # Arguments:
-# - K_T: Number of B-spline functions to be used (before transformation to L^2_0)
+# - n_splines: Number of B-spline functions to be used (before transformation to L^2_0)
 # - ord: spline order as in splines::splineDesign (number of non-zero splines at
 #        each value -> degree = ord - 1)
-get_knots <- function(K_T = 10, ord = 4) {
-  k_in <- seq(0, 1, length.out = K_T - 2)
-  k <- c(k_in[1] - ((ord - 1):1) * diff(k_in)[1], k_in,
-         k_in[length(k_in)] + (1:(ord-1)) * diff(k_in)[1])
-  return(k)
+get_knots <- function(n_splines = 10, ord = 4) {
+  interior_knots <- seq(0, 1, length.out = n_splines - 2)
+  knots <- c(interior_knots[1] - ((ord - 1):1) * diff(interior_knots)[1],
+             interior_knots,
+             interior_knots[length(interior_knots)] + (1:(ord-1)) * diff(interior_knots)[1])
+  return(knots)
 }
 
 # get_interpolation_values computes random values such that between each pair of
 # knots, there is an observation.
 # Arguments:
-# - K_T: Number of B-spline functions to be used (before transformation to L^2_0)
+# - n_splines: Number of B-spline functions to be used (before transformation to L^2_0)
 # - ord: spline order as in splines::splineDes
 get_interpolation_values <- function(knots, ord = 4) {
-  k_in <- knots[ord:(length(knots) - ord + 1)]
+  interior_knots <- knots[ord:(length(knots) - ord + 1)]
   n_obs <- length(knots) - ord - 1
-  t <- numeric(n_obs)
-  while(any(duplicated(t))) {
-    t <- sapply(seq_along(k_in[-1]), function(i) runif(1, min = k_in[i], max = k_in[i + 1]))
-    t <- sort(round(c(t, runif(n_obs - length(t))), 2))
+  quantiles <- numeric(n_obs)
+  while(any(duplicated(quantiles))) {
+    quantiles <- sapply(seq_along(interior_knots[-1]),
+                function(i) runif(1, min = interior_knots[i],
+                                  max = interior_knots[i + 1]))
+    quantiles <- sort(round(c(quantiles, runif(n_obs - length(quantiles))), 2))
   }
-  return(t)
+  return(quantiles)
+}
+
+
+get_scenario_name <- function(density_params) {
+  if (density_params$density_name == "beta") {
+    scenario_name <- paste0(density_params$density_name, " ", "a=", density_params$a, " ",
+                            "b=", density_params$b, " ", "n_knots=", density_params$n_knots
+                            )
+  }
+
+  if (density_params$density_name == "truncated_normal") {
+    scenario_name <- paste0(density_params$density_name, "_", "mean", density_params$mean, "_",
+                            "sd", density_params$sd, "_", "knots", density_params$n_knots
+    )
+  }
+
+  scenario_name
+
 }
 
 # get_theta computes the coefficient vector interpolating a beta distribution.
 # Arguments:
 # - a, b: shape parameters of the beta distribution to be interpolated
-# - K_T: Number of B-spline functions to be used (before transformation to L^2_0)
+# - n_splines: Number of B-spline functions to be used (before transformation to L^2_0)
 # - ord: spline order as in splines::splineDesign (number of non-zero splines at
 #     each value -> degree = ord - 1)
-# - knots: vector of length K_T + ord giving the inner and outer knots to be used
+# - knots: vector of length n_splines + ord giving the inner and outer knots to be used
 #     for constructing the transformed B-splines. Defaults to NULL, in which case
 #     equidistant knots over [0, 1] (with equidistant outer knot extension) are used
-# - t: vector of length K_T - 1 containing the values, where the function should
+# - t: vector of length n_splines - 1 containing the values, where the function should
 #     be interpolated. There should be at least one value between each adjacent
 #     pair of knots. Furthermore, equidistant values seem to yield design matrices
 #     that don't have full rank, causing the interpolation to fail. In this case,
 #     the default (NULL) is used, which means appropriate random values are used
 # Value: parameter vector, values used for interpolation, and number of trys
-get_theta <- function(a = 3, b = 3, K_T = 10, ord = 4, knots = NULL, t = NULL, count = 5) {
+get_theta <- function(clr_density, n_splines = 10, ord = 4, knots = NULL, quantiles = NULL, count = 5) {
   if (is.null(knots)) {
-    knots <- get_knots(K_T = K_T, ord = ord)
+    knots <- get_knots(n_splines = n_splines, ord = ord)
   }
-  stopifnot("Number of knots must be K_T + ord!" = length(knots) == K_T + ord)
+  stopifnot("Number of knots must be n_splines + ord!" = length(knots) == n_splines + ord)
 
-  if (is.null(t)) {
-    t <- get_interpolation_values(knots = knots, ord = ord)
+  if (is.null(quantiles)) {
+    quantiles <- get_interpolation_values(knots = knots, ord = ord)
   }
-  stopifnot("Number of values for interpolation has to be K_T - 1!" = length(t) == K_T - 1)
-  t <- sort(t)
+  stopifnot("Number of values for interpolation has to be n_splines - 1!" = length(quantiles) == n_splines - 1)
+  quantiles <- sort(quantiles)
 
   c <- 1
 
   while (c < count) {
-    y_clr <- f_0_clr(t, a, b)
-    X <- bs_L20(x = t, knots = knots, ord = ord)
-    if (Matrix::rankMatrix(X)[[1]] != K_T - 1) { # Check, whether X has full rank
+    y_clr <- clr_density(quantiles)
+    X <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = ord)
+    if (Matrix::rankMatrix(X)[[1]] != n_splines - 1) { # Check, whether X has full rank
       warning("Resulting design matrix does not have full rank.")
     }
     theta <- try(solve(X, y_clr), silent = TRUE)
@@ -127,21 +97,22 @@ get_theta <- function(a = 3, b = 3, K_T = 10, ord = 4, knots = NULL, t = NULL, c
     # if X does not have full rank (which happens, when a regular grid for t is used)
     if (class(theta) == "try-error") {
       success <- FALSE
-    } else if (!all.equal(c(X %*% theta), y_clr)) {
+    # see https://stackoverflow.com/questions/18025797/invalid-argument-type-error-with-all-equal-r
+    } else if (!isTRUE(all.equal(c(X %*% theta), y_clr))) {
       success <- FALSE
     } else {
       success <- TRUE
     }
     if (!success) {
       warning("Interpolation failed, now using random values for t.")
-      t <- get_interpolation_values(knots = knots, ord = ord)
+      quantiles <- get_interpolation_values(knots = knots, ord = ord)
       c <- c + 1
     } else {
-      return(list(theta = theta, t = t, count = c))
+      return(list(theta = theta, quantiles = quantiles, count = c))
     }
   }
   warning("Interpolation not successful.")
-  return(list(theta = NA, t = t, count = c))
+  return(list(theta = NA, quantiles = quantiles, count = c))
 }
 
 ### Functions to perform a simulation given a true density via a B-spline basis
@@ -157,23 +128,7 @@ get_theta <- function(a = 3, b = 3, K_T = 10, ord = 4, knots = NULL, t = NULL, c
 # - theta, knots, ord: vector of coefficients, vector of knots, and spline order
 #     determining density to sample from
 # - bins: vector containing partition of [0, 1] for the discretization of the density
-sample_f_0_interp <- function(N, theta, knots, ord = 4,
-                              bins = seq(knots[ord], knots[(length(knots) - (ord - 1))],
-                                         length.out = 101)) {
-  n_bins <- length(bins) - 1
-  probs <- sapply(seq_len(n_bins), function(i)
-    integrate(function(x, theta, knots, ord)
-      interpolate(x, theta, knots, ord),
-      theta = theta, knots = k, ord = ord,
-      lower = bins[i], upper = bins[i + 1])$value)
-  x <- rep(NA, N)
-  for (i in seq_len(N)) {
-    # x_bin <- which(rmultinom(1, 1, prob = probs) == 1)
-    x_bin <- sample(n_bins, 1, prob = probs)
-    x[i] <- runif(1, min = bins[x_bin], max = bins[x_bin + 1])
-  }
-  return(x)
-}
+
 
 # load self-written smoother "ms" for mixed reference measure
 source("../mixed_density_smooth.R")
@@ -223,7 +178,7 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
   sample_type <- match.arg(sample_type)
   bs <- match.arg(bs)
 
-  K_T <- length(knots) - ord
+  n_splines <- length(knots) - ord
   grid_hist <- seq(from = 0, to = 1, by = step_size)
   success <- FALSE
 
@@ -236,7 +191,7 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
       while (!support_check) {
         if (sample_type == "multinomial") {
           mids_dens <- grid_hist[1:(length(grid_hist) - 1)] + step_size / 2
-          eta <- c(log(step_size) + interpolate_clr(mids_dens, theta, knots = knots, ord = 4))
+          eta <- c(log(step_size) + spline_clr_density(mids_dens, theta, knots = knots, ord = 4))
           probs <- (exp(eta)) / (sum(exp(eta)))
           counts_dens <- rmultinom(n = 1, size = N, prob = probs)
         } else {
@@ -246,7 +201,7 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
           counts_dens <- hist_dens$counts
           mids_dens <- hist_dens$mids
         }
-        check <- sapply(seq_len(K_T),
+        check <- sapply(seq_len(n_splines),
                         function(k) sum(counts_dens[which(mids_dens >= knots[k] &
                                                             mids_dens <= knots[k + ord])]))
         support_check <- all(check > 0)
@@ -276,19 +231,19 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
     if (bs == "md") {
       model <- gam(counts ~ 1 +
                      ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                        np = FALSE, k = K_T, xt = list(xt_c), sp = sp) +
+                        np = FALSE, k = n_splines, xt = list(xt_c), sp = sp) +
                      offset(log(Delta)),
                    data = dta_dens, knots = list(y = knots), method = "REML", family = poisson())
     } else if (bs == "ad") {
       model <- gam(counts ~ 1 +
-                     s(y, bs = "ad", m = ad_m, k = K_T) +
+                     s(y, bs = "ad", m = ad_m, k = n_splines) +
                      offset(log(Delta)),
                    data = dta_dens, knots = list(y = knots), method = "REML", family = poisson())
     }
 
     # remove intercepts per covariate combination (here no covariates, i.e., one intercept)
-    X <- model.matrix(model)[, 2:K_T]
-    theta_hat <- model$coefficients[2:K_T]
+    X <- model.matrix(model)[, 2:n_splines]
+    theta_hat <- model$coefficients[2:n_splines]
 
     theta_diff <- theta - theta_hat
     MSE <- integrate(function(x) interpolate_clr(x, theta = theta_diff, knots = knots)^2, lower = 0, upper = 1)$value
@@ -298,18 +253,18 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
     relMSE <- MSE / norm_true
 
     # theta ~ N(theta_hat, Vc)
-    # => CR = {theta : (theta - theta_hat)^T V^{-1} (theta - theta_hat) <= chi^2_{1-alpha}(K_T)}
+    # => CR = {theta : (theta - theta_hat)^T V^{-1} (theta - theta_hat) <= chi^2_{1-alpha}(n_splines)}
 
     theta_diff <- matrix(theta_diff, ncol = 1)
     # without intercepts per covariate combination (here: 1)
     if (is.null(sp)) {
-      Vc <- model$Vc[2:K_T, 2:K_T, drop = FALSE]
+      Vc <- model$Vc[2:n_splines, 2:n_splines, drop = FALSE]
       Vc_inv <- try(solve(Vc), silent = TRUE)
     } else {
       Vc_inv <-  NA
     }
 
-    Vp <- model$Vp[2:K_T, 2:K_T, drop = FALSE]
+    Vp <- model$Vp[2:n_splines, 2:n_splines, drop = FALSE]
     Vp_inv <- try(solve(Vp), silent = TRUE)
     success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
   }
@@ -319,10 +274,10 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
     chi_statistic_Vc <- NA
   }
 
-  check_coverage_Vc <- as.numeric(chi_statistic_Vc) <= qchisq(1-alpha, df = K_T - 1) # - number of covariate combinations (intercepts), here: 1
+  check_coverage_Vc <- as.numeric(chi_statistic_Vc) <= qchisq(1-alpha, df = n_splines - 1) # - number of covariate combinations (intercepts), here: 1
 
   chi_statistic_Vp <- t(theta_diff) %*% Vp_inv %*% theta_diff
-  check_coverage_Vp <- as.numeric(chi_statistic_Vp) <= qchisq(1-alpha, df = K_T - 1)
+  check_coverage_Vp <- as.numeric(chi_statistic_Vp) <= qchisq(1-alpha, df = n_splines - 1)
 
   f_hat_clr <- c(X %*% theta_hat)
   f_hat <- try(interpolate(dta_dens$y, theta_hat, knots, ord), silent = TRUE) # FDboost::clr(f_hat_clr, w = step_size, inverse = TRUE) # exp(f_hat_clr) / mean(exp(f_hat_clr))
@@ -353,3 +308,59 @@ run_simulation <- function(i, sample_type = c("multinomial", "density"), theta,
               coverage_Vp = check_coverage_Vp, statistic_vc = chi_statistic_Vc,
               statistic_vp = chi_statistic_Vp, coverage_pw = CIs))
 }
+
+
+prepare_simulation <- function(scenario_number,
+                               density,
+                               seeds,
+                               knots_for_scenarios,
+                               spline_order,
+                               number_of_b_splines,
+                               grid,
+                               save_path) {
+  set.seed(seeds[scenario_number])
+
+  interpolation_values <- get_interpolation_values(knots = knots_for_scenarios[[scenario_number]], ord = spline_order)
+  theta <- get_theta(a = a[scenario_number], b = b[scenario_number], n_splines = number_of_b_splines[scenario_number], # and here
+                     ord = spline_order, knots = knots_for_scenarios[[scenario_number]], t = interpolation_values)$theta
+  saveRDS(theta, paste0(save_path, "/theta.rds"))# clr transformation of true density
+  f_0_clr_interp <- interpolate_clr(x = grid, theta = theta, knots = knots_for_scenarios[[scenario_number]])
+  saveRDS(f_0_clr_interp, paste0(save_path, "/f_0_clr_interp.rds"))
+
+  f_0_interp <- interpolate(x = grid, theta = theta, knots = knots_for_scenarios[[scenario_number]])
+  saveRDS(f_0_interp, paste0(save_path, "/f_0_interp.rds"))
+
+  #plot_interpolated_density(grid = grid, interpolated_density_results = f_0_interp,
+  #                         true_density = f_0, scenario_number = scenario_number,
+  #
+}
+
+
+plot_interpolated_density <- function(grid, # and here
+                                      interpolated_density_results,
+                                      true_density,
+                                      scenario_number,
+                                      a,
+                                      b,
+                                      interpolation_values,
+                                      is_clr = F+ALSE) {
+  clr_str = ""
+  if (is_clr) {
+    clr_str = "clr-"
+  }
+  par(mfrow = c(1, 2))
+  plot(grid, interpolated_density_results, type = "l", ylab = paste0(clr_str, "density"), xlab = "t",
+       main = paste0("True ", clr_str, "density"),
+       ylim = range(interpolated_density_results, true_density(grid, a = a, b = b), finite = TRUE))
+  lines(grid, true_density(grid, a = a, b = b), col = "grey")
+  points(interpolation_values, true_density(interpolation_values, a, b), pch = 4)
+  legend("bottom", legend = c(paste0("True ",  clr_str ,"density (interpolation)"),
+                              paste0("Beta(", a, ", ", b, paste0(")-",clr_str, "density"))), # adjust for different density
+         col = 1:2, lty = 1, bty = "n")
+}
+
+
+
+
+
+
