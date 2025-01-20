@@ -5,10 +5,14 @@
 # how to structure simulation
 # set params -> how to handle different densities -> for now just add in script
 # get true density and clr function as well as norm from factory
+
 # prepare simulation
 ## get approximated density and norm
+
 # run simulation
-## sample from simulated density and true density
+## sample covariates (binary,  linear effect, glatter Effekt)
+## sample dataset from density
+## prepare dataset for regression
 ## fit regression
 ## calculate coverage probs
 ## save all estimated densities
@@ -22,6 +26,7 @@ source("./simulation_functions.R")
 source("./densities.R")
 library(mgcv)
 
+set.seed(25)
 alpha <- 0.05 # 95% confidence
 n_simulation_runs <- 200 # number of simulation runs
 covariance_types <- c("Vc", "Vp")
@@ -58,23 +63,25 @@ for (penalized in c(FALSE, TRUE)) {
     identifier <- "penalized"
   }
   else {
-    sp <- 1
+    sp <- 0
     identifier <- "unpenalized"
   }
 
   base_path <- paste0("./", identifier)
 
   for (density_params in scenarios$densities) {
+    print(density_params$density_name)
     scenario_name <- get_scenario_name(density_params)
     scenario_path <- paste0(base_path, "/", scenario_name)
     save_path <- paste0(scenario_path, "/Simulation_Objects")
 
     if (!dir.exists(save_path)) dir.create(save_path, recursive = TRUE)
 
+    # Problem wir samplen immer noch aus der spline approx. der density --> to do
     densities <- get_densities(density_params, calculate_norm = TRUE)
     n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
-    theta <- get_theta(densities$clr_density_function)
-    saveRDS(theta, paste0(save_path, "/theta.rds"))
+    approx_results <- get_approx_results(densities$clr_density_function)
+    saveRDS(approx_results$theta, paste0(save_path, "/theta.rds"))
 
     coverage_rate <- list()
     coverage_rate[[scenario_name]] <- array(numeric(prod(scenario_dimensions)),
@@ -88,13 +95,13 @@ for (penalized in c(FALSE, TRUE)) {
     count <- 1
     for(i in seq_along(scenarios$n_obs)) {
       for(j in seq_along(scenarios$step_size)) {
-        print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", N_vec[i], "; Count: ", count))
-        sim_result <- lapply(1:n_simulation_runs, run_simulation, sample_type = "multinomial",
-                             theta = theta, knots = density_params$n_knots, N = scenarios$n_obs[i],
+        print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", scenarios$n_obs[i], "; Count: ", count))
+        sim_result <- lapply(1:n_simulation_runs, run_simulation, sample_type = "bin",
+                             approx_results = approx_results, n_knots = density_params$n_knots, N = scenarios$n_obs[i],
                              step_size = scenarios$step_size[j], alpha = alpha, sp = sp,
-                             norm_true = densities$norm_clr_density)
-        saveRDS(sim_result, paste0(folder[f], "/Simulation_Objects/S", S, "_N",
-                                   N_vec[i], "_G", n_bins[j], ".rds"))
+                             norm_true = densities$norm_clr_density, bs = "md")
+        saveRDS(sim_result, paste0(scenario_path, "/n_runs", n_simulation_runs, "_nobs",
+                                   scenarios$n_obs[i], "_nbins", n_bins[j], ".rds"))
         coverage_rate[[scenario_name]][i, j, 1] <- sum(sapply(1:n_simulation_runs,
                                                               function(l) sim_result[[l]]$coverage_Vc)) / n_simulation_runs
         coverage_rate[[scenario_name]][i, j, 2] <- sum(sapply(1:n_simulation_runs,
@@ -102,7 +109,7 @@ for (penalized in c(FALSE, TRUE)) {
         count <- count + 1
       }
     }
-    saveRDS(coverage_rate[[scenario_name]], paste0(folder[f], "/Simulation_Objects/coverage_rates.rds"))
+    saveRDS(coverage_rate[[scenario_name]], paste0(save_path, "/coverage_rates.rds"))
   }
   }
 }

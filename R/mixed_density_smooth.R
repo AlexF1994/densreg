@@ -26,7 +26,7 @@
 #   for the penalty of the discrete component (analogously to m[2] for the continuous
 #   component)
 
-smooth.construct.md.smooth.spec <- function (object, data, knots) {
+smooth.construct.md.smooth.spec <- function(object, data, knots) {
   x <- data[[object$term]]
   # getting specifications for continuous component
   if (length(object$p.order) == 1)
