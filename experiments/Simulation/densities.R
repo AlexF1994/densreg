@@ -134,7 +134,7 @@ get_densities_with_covariates <- function(density_params, covariates, calculate_
 
 get_densities_with_covariates_single <- function(observation_index, density_params, covariates, calculate_norm) {
   # base density
-  base_density_component <- get_densities(density_params,calculate_norm = FALSE, component = "base")
+  base_density_component <- get_densities(density_params, calculate_norm = FALSE, component = "base")
   # binary density
   if (covariates$binary_variable[observation_index] == 1) {
     binary_density_component <- get_densities(density_params, calculate_norm = FALSE, component = "binary")
@@ -306,7 +306,7 @@ multivariate_spline_clr_density <- function(quantiles, theta, knots, knots_covar
 
   design_matrix_y <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = order)
   design_matrix_x <- sum_constrained_spline_design_matrix(x = covariate, knots = knots_covariate, ord = order)
-  design_matrix <- kronecker(design_matrix_y, design_matrix_x)
+  design_matrix <- kronecker(design_matrix_x, design_matrix_y)
   values <- design_matrix %*% theta
 
   values

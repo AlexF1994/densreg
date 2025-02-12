@@ -491,13 +491,17 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
     theta_diff <- matrix(theta_diff, ncol = 1) # ??
 
     # base component
-    coverage_base <- get_coverage(model, theta_diff, "base", covariates, n_groups, sp, estimated_spline_densities, n_splines, X)
+    coverage_base <- get_coverage(model, theta_diff, "base", density_params$base_range, density_params$base_range,
+                                  covariates, n_groups, sp, estimated_spline_densities, n_splines, X, density_data$quantiles)
     # binary component
-    coverage_binary <- get_coverage(model, theta_diff, "binary", covariates, n_groups, sp, estimated_spline_densities, n_splines, X)
+    coverage_binary <- get_coverage(model, theta_diff, "binary", density_params$base_range, density_params$base_range,
+                                    covariates, n_groups, sp, estimated_spline_densities, n_splines, X, density_data$quantiles)
     # linear component
-    coverage_linear <- get_coverage(model, theta_diff, "linear", covariates, n_groups, sp, estimated_spline_densities, n_splines, X)
+    coverage_linear <- get_coverage(model, theta_diff, "linear", density_params$base_range, density_params$base_range,
+                                    covariates, n_groups, sp, estimated_spline_densities, n_splines, X, density_data$quantiles)
     # smooth component
-    coverage_smooth <- get_coverage(model, theta_diff, "smooth", covariates, n_groups, sp, estimated_spline_densities, n_splines, X, knots_smooth_covariate_estimate)
+    coverage_smooth <- get_coverage(model, theta_diff, "smooth", density_params$base_range, density_params$base_range,
+                                    covariates, n_groups, sp, estimated_spline_densities, n_splines, X, density_data$quantiles)
     # whole density
     coverage_whole_density <- get_coverage_density(model, theta_diff, covariates, n_groups, sp, estimated_spline_densities, n_splines, X)
 
@@ -509,14 +513,18 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
 }
 
 
-get_coverage <- function(model, theta_diff, effect_type, param_range, covariates, n_groups, sp, estimated_spline_densities, n_splines, X) {
+get_coverage <- function(model, theta_diff, effect_type, param_range, base_range,
+                         covariates, n_groups, sp, estimated_spline_densities, n_splines, X,
+                         quantiles) {
   alpha <- 0.05
   # I don't need the range of X thetas since we only need the thetas corresponding to the y direction
   unique_covariates_for_effect <- get_unique_covariates_for_effect(covariates, effect_type) # TODO
-  theta_diff <- theta_diff[param_range[1]:param_range[2]]
+  X_for_effect <- X[, param_range[1]:param_range[2]]
   # do I need the basis with constraint or without?
   unity_matrix <- diag(1, nrow = n_splines - 1)
+  # TODO check whether this produces the basis fo reach observation individually
   basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect) # I want the coverage for all unique covariates
+  basis_functional_intercept <- X[1, base_range[0]:base_range[1]]
   S <- get_subsetting_matrix_S(param_range, length(theta_diff))
 
   # for the individual effects I don't need the S_j matrix directly as I can just subset V_c or V_p respectively
@@ -540,6 +548,110 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, covariates
   chi_statistic_Vp <- rep(NA, length(basis_effect))
   check_coverage_Vp <- rep(NA, length(basis_effect))
   A_for_effect_bases <- hashmap()
+  ki_infos <- list()
+
+  for (i in 1:length(basis_effect)) {
+    mixed_basis <- kronecker(t(basis_effect[i]), unity_matrix)
+    A_for_effect_base <- mixed_basis %*% S
+    theta_diff_A <- A_for_effect_base %*% theta_diff
+    # I store the different As in hash table to retrieve them fast for overall density
+    # KIs and coverage
+    A_for_effect_bases[[unique_covariates_for_effect[i]]] <- A_for_effect_base
+    Vp_mixed <- mixed_basis %*% Vp_inv %*% t(mixed_basis)
+    Vp_mixed_inv <- try(solve(Vp), silent = TRUE)
+    success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
+
+    if (!any(is.na(Vc_inv))) {
+      Vc_mixed <- mixed_basis %*% Vc_inv %*% t(mixed_basis)
+      Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
+      chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
+    } else {
+      chi_statistic_Vc[i] <- NA
+    }
+
+    check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc) <= qchisq(1 - alpha, df = n_splines - 1)
+    chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
+    check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp) <= qchisq(1 - alpha, df = n_splines - 1)
+    # calcualte KIs
+    ki_infos[i] <- get_kis(estimated_spline_densities, basis_functional_intercept,
+                           Vc_mixed, Vp_mixed, quantiles)
+
+  }
+
+
+  return(ki_info = ki_infos, check_coverage_Vc = check_coverage_Vc, check_coverage_Vp = check_coverage_Vp, S = S, A = A_for_effect_bases)
+}
+
+
+get_unique_covariates_for_effect <- function(covariates, effect_type) {
+  if (effect_type == "base") {
+    variable <- "y" # shouldn't this be always one as it is the functional intercept?
+  }
+
+  if (effect_type == "binary") {
+    variable <- "binary_variable"
+  }
+
+  if (effect_type == "linear") {
+    variable <- "linear_variable"
+  }
+
+  if (effect_type == "smooth") {
+    variable <- "smooth_variable"
+  }
+  unique_covariates <- unique(covariates[, variable]) # TODO check whether this works as expected
+  unique_covariates
+}
+
+
+get_coverage_density <- function(model, theta_diff,base_range,
+                         covariates, n_groups, sp, estimated_spline_densities, n_splines, X,
+                         quantiles, coverage_base, coverage_binary, coverage_linear,
+                         coverage_smooth) {
+  alpha <- 0.05
+  for (i in 1:nrow(covariates)){
+    covariate_combination <- covariates[i,]
+    # base
+    A_base <- coverage_base$A[[1]]
+    # binary
+    A_binary <- coverage_binary$A[[covariates$binary_variable]]
+    # linear
+    A_linear <- coverage_linear$A[[covariates$linear_variable]]
+    # smooth
+    A_smooth <- coverage_smooth$A[[covariates$smooth_variable]]
+  }
+  # I don't need the range of X thetas since we only need the thetas corresponding to the y direction
+  theta_diff <- theta_diff[param_range[1]:param_range[2]]
+  X_for_effect <- X[, param_range[1]:param_range[2]]
+  # do I need the basis with constraint or without?
+  unity_matrix <- diag(1, nrow = n_splines - 1)
+  # TODO check whether this produces the basis fo reach observation individually
+  basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect) # I want the coverage for all unique covariates
+  basis_functional_intercept <- X[1, base_range[0]:base_range[1]]
+  S <- get_subsetting_matrix_S(param_range, length(theta_diff))
+
+  # for the individual effects I don't need the S_j matrix directly as I can just subset V_c or V_p respectively
+  # if I want to construct the KIs for the whole density I will have to construct it explicitly
+  # therefore I construct it here then I can use it also in the KIs of the individual effects (not only for thetas)
+  # without intercepts per covariate combination (here: 1)
+  # I'm only allowed to include theta in y-direction
+  if (is.null(sp)) {
+    Vc <- model$Vc[(n_groups + 1 + param_range[1]):param_range[2], (n_groups + 1 + param_range[1]):param_range[2], drop = FALSE]
+    Vc_inv <- try(solve(Vc), silent = TRUE)
+  } else {
+    Vc_inv <-  NA
+  }
+
+  Vp <- model$Vp[(n_groups + 1 + param_range[1]):param_range[2], (n_groups + 1 + param_range[1]):param_range[2], drop = FALSE]
+  Vp_inv <- try(solve(Vp), silent = TRUE)
+  success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
+
+  check_coverage_Vc <- rep(NA, length(basis_effect))
+  chi_statistic_Vc <- rep(NA, length(basis_effect))
+  chi_statistic_Vp <- rep(NA, length(basis_effect))
+  check_coverage_Vp <- rep(NA, length(basis_effect))
+  A_for_effect_bases <- hashmap()
+  ki_infos <- list()
 
   for (i in 1:length(basis_effect)) {
     mixed_basis <- kronecker(t(basis_effect[i]), unity_matrix)
@@ -562,13 +674,10 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, covariates
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc) <= qchisq(1 - alpha, df = n_splines - 1)
     chi_statistic_Vp[i] <- t(theta_diff) %*% Vp_mixed_inv %*% theta_diff
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp) <= qchisq(1 - alpha, df = n_splines - 1)
+    # calcualte KIs
+    ki_infos[i] <- get_kis(estimated_spline_densities, basis_functional_intercept,  Vc_mixed, Vp_mixed, quantiles)
 
   }
-
-  # calcualte KIs
-  ki_info <- get_kis(estimated_spline_densities, effect_type, A) # TODO
-
-  return(ki_info = ki_info, check_coverage_Vc = check_coverage_Vc, check_coverage_Vp = check_coverage_Vp, S = S, A = A_for_effect_bases)
 }
 
 
@@ -611,13 +720,15 @@ get_subsetting_matrix_S <- function(param_range, n_params) {
 }
 
 
-get_kis <- function(estimated_spline_densities, effect_type, unique_covariates) {
+get_kis <- function(spline_densities, estimated_spline_densities,
+                    basis_functional_intercept,  Vc_mixed, Vp_mixed, effect_type,
+                    quantiles) {
   f_hat_clr <- estimated_spline_densities$clr_density_function(quantiles, effect_type)
-  f_hat <- estimated_spline_densities$density_function(density_data$df$y)
+  f_hat <- estimated_spline_densities$density_function(quantiles)
 
-  se_p <- sqrt(rowSums((X %*% Vp) * X)) # what X should I take here?
-  if (is.null(sp)) {
-    se_c <- sqrt(rowSums((X %*% Vc) * X))
+  se_p <- sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept) # what X should I take here?
+  if (!is.null(Vc_mixed)) {
+    se_c <- sqrt(sqrt(t(basis_functional_intercept) %*% Vc_mixed %*% basis_functional_intercept))
   } else {
     se_c <- NA
   }
@@ -625,10 +736,11 @@ get_kis <- function(estimated_spline_densities, effect_type, unique_covariates) 
   CI_low_p <- f_hat_clr - qnorm(1 - alpha / 2) * se_p
   CI_up_c <- f_hat_clr + qnorm(1 - alpha / 2) * se_c
   CI_low_c <- f_hat_clr - qnorm(1 - alpha / 2) * se_c
-  f_true_clr <- spline_densities$clr_density_function(density_data$df$y)
+  f_true_clr <- spline_densities$clr_density_function(quantiles)
   CI_p_check <- (CI_low_p <= f_true_clr) & (f_true_clr <= CI_up_p)
   CI_c_check <- (CI_low_c <= f_true_clr) & (f_true_clr <= CI_up_c)
   CIs <- data.frame(f_true_clr, CI_low_c, CI_up_c, CI_c_check, CI_low_p, CI_up_p, CI_p_check)
+  CIs
 }
 
 
@@ -703,7 +815,7 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
   }
 
 
-  return(list(df = dta_dens, Delta = Delta, n_unique_cov_combis = n_unique_cov_combis))
+  return(list(df = dta_dens, Delta = Delta, n_unique_cov_combis = n_unique_cov_combis, quantiles = mids_dens))
 }
 
 
