@@ -27,8 +27,8 @@ scenarios <- list(
                    list(density_name = "truncated_normal", mean = 2, sd = 2,
                         n_knots = 10)),
   seed = 1542,
-  n_obs = c(5000, 10000, 50000, 100000),
-  step_size = c(0.01, 0.001, 0.0005)
+  n_obs = c(200, 10000, 50000, 100000),
+  step_size = c(0.05, 0.001, 0.0005)
 )
 
 scenario_dimensions <- c(sapply(list(scenarios$n_obs, scenarios$step_size, covariance_types), length), 5) #  5 for covariable types
@@ -63,8 +63,10 @@ simulate_with_covariates <- function(){
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
       n_obs_approx <- 1000
       approx_design_matrix <- sample_covariates(n_obs_approx)
+      knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = c(-5,5))
       approx_results <- get_approx_results_with_covariates(density_params = density_params,
-                                                           covariates =  approx_design_matrix)
+                                                           covariates =  approx_design_matrix,
+                                                           knots_smooth_covariate = knots_smooth_covariate)
       saveRDS(approx_results$theta, paste0(save_path, "/theta.rds"))
 
       coverage_rate <- list()
@@ -90,10 +92,35 @@ simulate_with_covariates <- function(){
                                step_size = scenarios$step_size[j], alpha = alpha, sp = sp, bs = "md", covariates = X)
           saveRDS(sim_result, paste0(scenario_path, "/n_runs", n_simulation_runs, "_nobs",
                                      scenarios$n_obs[i], "_nbins", n_bins[j], ".rds"))
-          coverage_rate[[scenario_name]][i, j, 1] <- sum(sapply(1:n_simulation_runs,
-                                                                function(l) sim_result[[l]]$coverage_Vc)) / n_simulation_runs
-          coverage_rate[[scenario_name]][i, j, 2] <- sum(sapply(1:n_simulation_runs,
-                                                                function(l) sim_result[[l]]$coverage_Vp)) / n_simulation_runs
+
+          # base component
+          coverage_rate[[scenario_name]][i, j, 1, 1] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_base$check_coverage_Vc)) / n_simulation_runs
+          coverage_rate[[scenario_name]][i, j, 2, 1] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_base$check_coverage_Vp)) / n_simulation_runs
+          # binary component
+          coverage_rate[[scenario_name]][i, j, 1, 2] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_binary$check_coverage_Vc)) / n_simulation_runs
+          coverage_rate[[scenario_name]][i, j, 2, 2] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_binary$check_coverage_Vp)) / n_simulation_runs
+
+          # linear component
+          coverage_rate[[scenario_name]][i, j, 1, 3] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_linear$check_coverage_Vc)) / n_simulation_runs
+          coverage_rate[[scenario_name]][i, j, 2, 3] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_linear$check_coverage_Vp)) / n_simulation_runs
+
+          # smooth component
+          coverage_rate[[scenario_name]][i, j, 1, 4] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_smooth$check_coverage_Vc)) / n_simulation_runs
+          coverage_rate[[scenario_name]][i, j, 2, 4] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_smooth$check_coverage_Vp)) / n_simulation_runs
+
+          # whole density
+          coverage_rate[[scenario_name]][i, j, 1, 5] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_whole_density$check_coverage_Vc)) / n_simulation_runs
+          coverage_rate[[scenario_name]][i, j, 2, 5] <- sum(sapply(1:n_simulation_runs,
+                                                                function(l) sim_result[[l]]$coverage_whole_density$check_coverage_Vp)) / n_simulation_runs
           count <- count + 1
         }
       }

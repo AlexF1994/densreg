@@ -17,7 +17,7 @@ library("r2r")
 # - ord: spline order as in splines::splineDesign (number of non-zero splines at
 #        each value -> degree = ord - 1)
 get_knots <- function(n_splines = 10, ord = 4, range_ = c(0,1)) {
-  interior_knots <- seq(0, 1, length.out = n_splines - 2)
+  interior_knots <- seq(range_[1], range_[2], length.out = n_splines - 2)
   knots <- c(interior_knots[1] - ((ord - 1):1) * diff(interior_knots)[1],
              interior_knots,
              interior_knots[length(interior_knots)] + (1:(ord-1)) * diff(interior_knots)[1])
@@ -152,10 +152,10 @@ get_approx_results <-  function(clr_density, n_splines = 10, ord = 4, knots = NU
 
 get_approx_results_with_covariates <-  function(density_params,
                                                 covariates,
+                                                knots_smooth_covariate,
                                                 n_splines = 10,
                                                 ord = 4,
                                                 knots_density_ = NULL,
-                                                knots_smooth_covariate = NULL,
                                                 quantiles_density = NULL) {
   if (is.null(knots_density_)) {
     knots_density_ <- get_knots(n_splines = n_splines, ord = ord)
@@ -196,7 +196,7 @@ get_approx_results_with_covariates <-  function(density_params,
   # maybe we can delete the penalization in x direction here as well
   model <- gam(y_clr ~ -1
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
-                      np = FALSE, k = n_splines, xt = list(list(xt_c)))
+                    np = FALSE, k = n_splines, xt = list(list(xt_c)))
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
                     np = FALSE, k = n_splines, by = binary_variable, xt = list(list(xt_c)))
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
@@ -204,7 +204,8 @@ get_approx_results_with_covariates <-  function(density_params,
                     xt = list(list(xt_c)))
                + ti(quantiles, smooth_variable, bs = c("d","ps"), m = list(c(2, 2), c(2, 2)),
                     k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, xt = list(list(xt_c))),
-               data = dta_dens, knots = list(quantiles = knots_density_), method = "REML")
+               data = dta_dens, knots = list(quantiles = knots_density_, smooth_variable = knots_smooth_covariate),
+               method = "REML")
   # TODO plotting
 
   list(theta = model$coefficients,
@@ -213,7 +214,7 @@ get_approx_results_with_covariates <-  function(density_params,
        binary_range = c(10, 18),
        linear_range = c(19, 27),
        smooth_range = c(28, length(model$coefficients)),
-       knots_smooth_covariate = model$smooth[[4]]$margin[[2]]$knots)
+       knots_smooth_covariate = knots_smooth_covariate)
 
 }
 
@@ -420,7 +421,7 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
 
   n_splines <- length(knots) - ord
   # how to get spline densities with more thetas (for every spline component)?
-  success <- FALSE
+  #success <- FALSE
 
   unpenalized <- FALSE # penalization necessary for regression
 
@@ -430,25 +431,27 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
                                    knots = knots,
                                    order = ord)
   # Here, we need one intercept for each unique covariate combination
-  model <- gam(counts ~ 1
+  xt_c = c(0, 1)
+  model <- gam(counts ~ -1
                + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(c(0, 1)), sp = sp)
+                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp)
                + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(c(0, 1)), sp = sp, by = binary_variable)
+                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp, by = binary_variable)
                + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(xt_c), sp = sp, by = linear_variable)
-               + ti(share, smooth_variable, bs = c("d","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
-                    k = c(12, 8), mc = c(FALSE, TRUE), np = FALSE)
-               + as.factor(group_id) - 1
+                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp, by = linear_variable)
+               + ti(y, smooth_variable, bs = c("d","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
+                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE)
+               + as.factor(group_id)
                + offset(log(density_data$Delta)),
-               data = density_data$df, knots = list(y = knots), method = "REML", family = poisson())
+               data = density_data$df, knots = list(y = knots, smooth_variable = knots_smooth_covariate),
+               method = "REML", family = poisson())
 
 
     # remove intercepts per covariate combination (here no covariates, i.e., one intercept)
-    n_groups <- max(density_data$group_id)
+    n_groups <- max(density_data$df$group_id)
     n_params <- length(model$coefficients)
     X <- model.matrix(model)[, (n_groups + 1):n_params]
-    knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots
+    knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots # TODO: check if same as knots_smooth_covariate
     theta_hat <- model$coefficients[(n_groups + 1):n_params]
     theta_diff <- theta - theta_hat
 
@@ -806,7 +809,7 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
   }
 
 
-  return(list(df = dta_dens, Delta = Delta, n_unique_cov_combis = n_unique_cov_combis, quantiles = mids_dens))
+  return(list(df = dta_dens, Delta = dta_dens$Delta, n_unique_cov_combis = n_unique_cov_combis, quantiles = mids_dens))
 }
 
 
@@ -833,7 +836,7 @@ check_knot_support <- function(n_splines,
                                order,
                                threshold=0) {
   # it seems that even small counts are problematic with big N
-  # therfore I introduce a threshold to mitigate this behavior
+  # therefore I introduce a threshold to mitigate this behavior
   check <- sapply(seq_len(n_splines),
                   function(k) sum(counts_dens[which(mids_dens >= knots[k] &
                                                       mids_dens <= knots[k + order])]))
@@ -867,8 +870,8 @@ plot_interpolated_density <- function(grid, # and here
 
 sample_covariates <- function(n_obs) {
   binary <- sample(c(0,1), n_obs, replace = TRUE)
-  linear <- rnorm(n_obs) * 100
-  smooth <- rnorm(n_obs) * 5 + 5
+  linear <- runif(n_obs, min = -5, max = 5)
+  smooth <- runif(n_obs, min = -5, max = 5)
   covariates <- data.frame(
     binary_variable = binary,
     linear_variable = linear,

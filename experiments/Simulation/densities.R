@@ -21,7 +21,7 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
   if (density_params$density_name == "beta") {
     # take absolute value to avoid negative parmater values for a and b
     a <- ifelse(param_scale, (1 + abs(param_scale)) * density_params$a, density_params$a)
-    b <- ifelse(param_scale, (1 + abs(param_scale)) * density_params$b, density_params$b)
+    b <- density_params$b
     density_function <- partial(beta_density, a = a,
                                 b = b)
     distribution_function <- partial(beta_distribution, a = a,
@@ -390,6 +390,7 @@ get_bin_probabilities <- function(bins, densities, quantiles=NULL) {
   if (densities$density_name == "spline") {
     step_size = 1 / n_bins
     linear_predictor <- c(log(step_size) + densities$clr_density_function(quantiles))
+
     bin_probabilities <- (exp(linear_predictor) + (eps / n_bins)) / (sum(exp(linear_predictor)) + eps)
     if (any(is.nan(bin_probabilities))) {
       print("here")
