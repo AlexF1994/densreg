@@ -490,16 +490,20 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
 
     # base component
     coverage_base <- get_coverage(model, theta_diff, "base", density_params$base_range, density_params$base_range,
-                                  covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles)
+                                  covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                  knots_smooth_covariate)
     # binary component
     coverage_binary <- get_coverage(model, theta_diff, "binary", density_params$binary_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles)
+                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                    knots_smooth_covariate)
     # linear component
     coverage_linear <- get_coverage(model, theta_diff, "linear", density_params$linear_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles)
+                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                    knots_smooth_covariate)
     # smooth component
     coverage_smooth <- get_coverage(model, theta_diff, "smooth", density_params$smooth_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles)
+                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                    knots_smooth_covariate)
     # whole density
     coverage_whole_density <- get_coverage_density(model, theta_diff, density_params$base_range, covariates,
                                                    n_groups, sp, spline_densities, estimated_spline_densities,
@@ -518,15 +522,14 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
 get_coverage <- function(model, theta_diff, effect_type, param_range, base_range,
                          covariates, n_groups, sp, spline_densities,
                          estimated_spline_densities, n_splines, X,
-                         quantiles) {
+                         quantiles, knots_smooth_covariate) {
   alpha <- 0.05
   # I don't need the range of X thetas since we only need the thetas corresponding to the y direction
   unique_covariates_for_effect <- get_unique_covariates_for_effect(covariates, effect_type) # TODO
-  X_for_effect <- X[, param_range[1]:param_range[2]]
   # do I need the basis with constraint or without?
   unity_matrix <- diag(1, nrow = n_splines - 1)
   # TODO check whether this produces the basis fo reach observation individually
-  basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect) # I want the coverage for all unique covariates
+  basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect, knots_smooth_covariate) # I want the coverage for all unique covariates
   basis_functional_intercept <- X[1, base_range[0]:base_range[1]]
   S <- get_subsetting_matrix_S(param_range, length(theta_diff))
 
@@ -675,7 +678,7 @@ get_coverage_density <- function(model, theta_diff, base_range,
 }
 
 
-get_basis_for_effect <- function(effect_type, unique_covariate_for_effect, knots) {
+get_basis_for_effect <- function(effect_type, unique_covariate_for_effect, knots_smooth_covariate) {
   for (covariate in unique_covariate_for_effect)
   if (effect_type == "base") {
     base_effect <- 1
@@ -690,7 +693,7 @@ get_basis_for_effect <- function(effect_type, unique_covariate_for_effect, knots
   }
 
   if (effect_type == "smooth") {
-    base_effect <- sum_constrained_spline_design_matrix(unique_covariate_for_effect, knots)
+    base_effect <- sum_constrained_spline_design_matrix(unique_covariate_for_effect, knots_smooth_covariate)
   }
   return(base_effect)
 }
@@ -720,7 +723,7 @@ get_kis <- function(spline_densities, estimated_spline_densities,
   f_hat_clr <- estimated_spline_densities$clr_density_function(quantiles, effect_type)
   f_hat <- estimated_spline_densities$density_function(quantiles)
 
-  se_p <- sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept) # what X should I take here?
+  se_p <- sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept)
   if (!is.null(Vc_mixed)) {
     se_c <- sqrt(t(basis_functional_intercept) %*% Vc_mixed %*% basis_functional_intercept)
   } else {
