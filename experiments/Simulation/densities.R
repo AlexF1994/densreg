@@ -1,5 +1,6 @@
 library("purrr")
 library("truncnorm")
+library("rlist")
 
 eps = 0.000001
 
