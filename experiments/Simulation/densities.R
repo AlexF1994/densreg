@@ -135,14 +135,14 @@ get_densities_with_covariates <- function(density_params, covariates, calculate_
 
 get_densities_with_covariates_single <- function(observation_index, density_params, covariates, calculate_norm) {
   # base density
-  base_density_component <- get_densities(density_params, calculate_norm = FALSE, component = "base")
+  base_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "base")
   # binary density
   if (covariates$binary_variable[observation_index] == 1) {
-    binary_density_component <- get_densities(density_params, calculate_norm = FALSE, component = "binary")
+    binary_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "binary")
   }
 
   else {
-    binary_density_component <- get_densities(list(density_name = "constant"), calculate_norm = FALSE)
+    binary_density_component <- get_densities(list(density_name = "constant"), calculate_norm = calculate_norm)
   }
 
   # linear density
@@ -156,7 +156,9 @@ get_densities_with_covariates_single <- function(observation_index, density_para
   smooth_variable = covariates$smooth_variable[observation_index]
 
 
-  smooth_density_component <- get_densities(density_params, param_scale = smooth_variable, component = "smooth", smooth_variable = smooth_variable)
+  smooth_density_component <- get_densities(density_params, param_scale = smooth_variable, component = "smooth",
+                                            calculate_norm = calculate_norm,
+                                            smooth_variable = smooth_variable)
 
   density_components <- list(base_density_component,
                              binary_density_component,
@@ -172,12 +174,23 @@ get_densities_with_covariates_single <- function(observation_index, density_para
   )
 
   if (calculate_norm) {
+    norm_clr_density_linear <- integrate(partial(clr_density_squared,
+                                          clr_density = linear_density_component$clr_density_function),
+                                  lower = 0,
+                                  upper = 1,
+                                  subdivisions = 1000)$value
     norm_clr_density <- integrate(partial(clr_density_squared,
                                           clr_density = clr_density_function),
-                                  lower = 0 + eps,
-                                  upper = 1 - eps,
+                                  lower = 0,
+                                  upper = 1,
                                   subdivisions = 1000)$value
-    densities <- list.append(densities, norm_clr_density = norm_clr_density)
+    densities <- list.append(densities,
+                             norm_clr_density = norm_clr_density,
+                             norm_clr_density_base = base_density_component$norm_clr_density,
+                             norm_clr_density_binary = binary_density_component$norm_clr_density,
+                             norm_clr_density_linear = norm_clr_density_linear,
+                             norm_clr_density_smooth = smooth_density_component$norm_clr_density
+                             )
   }
 
   return(
@@ -350,7 +363,7 @@ constrained_tensor_spline_design_matrix <- function(x, knots, ord = 4) {
 }
 
 sum_constrained_spline_design_matrix <- function(x, knots, ord = 4) {
-  X <- splines::splineDesign(knots = knots, x)
+  X <- splines::splineDesign(knots = knots, x, ord = ord, derivs = 0)
   C <- rep(1, nrow(X)) %*% X
   qrc <- qr(t(C))
   Z <- qr.Q(qrc,complete=TRUE)[,(nrow(C)+1):ncol(C)]

@@ -27,7 +27,7 @@ scenarios <- list(
                    list(density_name = "truncated_normal", mean = 2, sd = 2,
                         n_knots = 10)),
   seed = 1542,
-  n_obs = c(200, 10000, 50000, 100000),
+  n_obs = c(700, 10000, 50000, 100000),
   step_size = c(0.05, 0.001, 0.0005)
 )
 
