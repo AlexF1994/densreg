@@ -189,9 +189,7 @@ get_approx_results_with_covariates <-  function(density_params,
     dta_dens <- rbind(dta_dens, dta_dens_obs)
   }
 
-  #design_info <- get_design_matrix_and_basis_ranges_with_covariates(dta_dens, knots_density_)
   xt_c = c(0, 1)
-  # estimating --> TODO
   print("approximating")
   # maybe we can delete the penalization in x direction here as well
   model <- gam(y_clr ~ -1
@@ -206,7 +204,7 @@ get_approx_results_with_covariates <-  function(density_params,
                     k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, xt = list(list(xt_c))),
                data = dta_dens, knots = list(quantiles = knots_density_, smooth_variable = knots_smooth_covariate),
                method = "REML")
-  # TODO plotting
+  print("approximating done")
 
   list(theta = model$coefficients,
        knots = knots_density_,
@@ -452,7 +450,7 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
     n_groups <- max(density_data$df$group_id)
     n_params <- length(model$coefficients)
     X <- model.matrix(model)[, (n_groups + 1):n_params]
-    knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots # TODO: check if same as knots_smooth_covariate
+    knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots
     theta_hat <- model$coefficients[(n_groups + 1):n_params]
     theta_diff <- theta - theta_hat
 
@@ -551,9 +549,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   Vp <- model$Vp[(n_groups + param_range[1]):(n_groups + param_range[2]),
                  (n_groups + param_range[1]):(n_groups + param_range[2]), drop = FALSE]
   Vp_inv <- try(solve(Vp), silent = TRUE)
-  if ("try-error" %in% class(Vp_inv)) {
-    Vp_inv <- diag(nrow(Vp))
-  }
+
   success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
 
   check_coverage_Vc <- rep(NA, nrow(basis_effect))
@@ -649,17 +645,15 @@ get_coverage_density <- function(model, theta_diff, base_range,
   basis_functional_intercept <- X[1, base_range[1]:base_range[2]]
 
   if (is.null(sp)) {
-    Vc <- model$Vc[n_groups:(n_groups + nrow(model$Vc)), n_groups:(n_groups + nrow(model$Vc)), drop = FALSE]
+    Vc <- model$Vc[(n_groups+1):nrow(model$Vc), (n_groups+1):nrow(model$Vc), drop = FALSE]
     Vc_inv <- try(solve(Vc), silent = TRUE)
   } else {
     Vc_inv <-  NA
   }
 
-  Vp <- model$Vp[n_groups:(n_groups + nrow(model$Vp)), n_groups:(n_groups + nrow(model$Vp)), drop = FALSE]
+  Vp <- model$Vp[(n_groups+1):nrow(model$Vp), (n_groups+1):nrow(model$Vp), drop = FALSE]
   Vp_inv <- try(solve(Vp), silent = TRUE)
-  if ("try-error" %in% class(Vp_inv)) {
-    Vp_inv <- diag(nrow(Vp))
-  }
+
   success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
 
   for (i in 1:nrow(covariates)){
@@ -688,20 +682,23 @@ get_coverage_density <- function(model, theta_diff, base_range,
       Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
       chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
     } else {
+      Vc_mixed_inv <- NA
+      Vc_mixed <- NA
       chi_statistic_Vc[i] <- NA
     }
 
     success <- ifelse("try-error" %in% union(class(Vc_mixed_inv), class(Vp_mixed_inv)), FALSE, TRUE)
 
-    check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc) <= qchisq(1 - alpha, df = n_splines - 1)
+    check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
-    check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp) <= qchisq(1 - alpha, df = n_splines - 1)
+    check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
-    ki_infos[i] <- get_kis(spline_densities, estimated_spline_densities,
+    ki_infos[[i]] <- get_kis(spline_densities[[i]], estimated_spline_densities[[i]],
                            basis_functional_intercept,  Vc_mixed, Vp_mixed,
                            "all", quantiles)
 
   }
+  return(list(ki_info = ki_infos, check_coverage_Vc = check_coverage_Vc, check_coverage_Vp = check_coverage_Vp))
 }
 
 

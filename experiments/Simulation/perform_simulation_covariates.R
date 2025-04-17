@@ -12,7 +12,6 @@ n_simulation_runs <- 200 # number of simulation runs
 covariance_types <- c("Vc", "Vp")
 
 spline_order <- 4
-#sp <- list(NULL, NULL, NULL, NULL, 0, 0, 0) # smoothing parameter (NULL is default, 0 corresponds to no penalization)
 scenarios <- list(
   densities = list(list(density_name = "beta", a = 2, b = 2, n_knots = 10),
                    list(density_name = "beta", a = 2, b = 3, n_knots = 10),
@@ -27,7 +26,7 @@ scenarios <- list(
                    list(density_name = "truncated_normal", mean = 2, sd = 2,
                         n_knots = 10)),
   seed = 1542,
-  n_obs = c(700, 10000, 50000, 100000),
+  n_obs = c(5000, 10000, 50000, 100000),
   step_size = c(0.05, 0.001, 0.0005)
 )
 
@@ -59,10 +58,10 @@ simulate_with_covariates <- function(){
 
       if (!dir.exists(save_path)) dir.create(save_path, recursive = TRUE)
 
-      # Problem wir samplen immer noch aus der spline approx. der density --> to do
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
-      n_obs_approx <- 1000
+      n_obs_approx <- 5000
       approx_design_matrix <- sample_covariates(n_obs_approx)
+      # note that you have to change the range if you change the method for sampling smooth covariates
       knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = c(-5,5))
       approx_results <- get_approx_results_with_covariates(density_params = density_params,
                                                            covariates =  approx_design_matrix,

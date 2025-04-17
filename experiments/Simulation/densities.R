@@ -31,7 +31,7 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
 
   if (density_params$density_name == "truncated_normal") {
     mean <- ifelse(param_scale, param_scale * density_params$mean, density_params$mean)
-    sd <- ifelse(param_scale, param_scale * density_params$sd, density_params$sd)
+    sd <- ifelse(param_scale, abs(param_scale) * density_params$sd + 1, density_params$sd)
     density_function <- partial(truncated_normal_density,
                                 mean = mean,
                                 sd = sd)
