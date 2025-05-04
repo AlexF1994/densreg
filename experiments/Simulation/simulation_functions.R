@@ -431,6 +431,7 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
                                    order = ord)
   # Here, we need one intercept for each unique covariate combination
   xt_c = c(0, 1)
+  print("start fitting Poisson model")
   model <- gam(counts ~ -1
                + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
                     np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp)
@@ -444,7 +445,7 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
                + offset(log(density_data$Delta)),
                data = density_data$df, knots = list(y = knots, smooth_variable = knots_smooth_covariate),
                method = "REML", family = poisson())
-
+print("Done fitting Poisson model")
 
     # remove intercepts per covariate combination (here no covariates, i.e., one intercept)
     n_groups <- max(density_data$df$group_id)
@@ -916,10 +917,10 @@ plot_interpolated_density <- function(grid, # and here
 }
 
 
-sample_covariates <- function(n_obs) {
+sample_covariates <- function(n_obs, range_smooth_covariates) {
   binary <- sample(c(0,1), n_obs, replace = TRUE)
-  linear <- runif(n_obs, min = -5, max = 5)
-  smooth <- runif(n_obs, min = -5, max = 5)
+  linear <- rdunif(n_obs, range_smooth_covariates[1], range_smooth_covariates[2])
+  smooth <- rdunif(n_obs, range_smooth_covariates[1], range_smooth_covariates[2])
   covariates <- data.frame(
     binary_variable = binary,
     linear_variable = linear,

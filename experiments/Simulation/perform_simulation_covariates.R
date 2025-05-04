@@ -60,9 +60,10 @@ simulate_with_covariates <- function(){
 
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
       n_obs_approx <- 5000
-      approx_design_matrix <- sample_covariates(n_obs_approx)
+      range_smooth_covariates <- c(-5,5)
+      approx_design_matrix <- sample_covariates(n_obs_approx, range_smooth_covariates)
       # note that you have to change the range if you change the method for sampling smooth covariates
-      knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = c(-5,5))
+      knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = range_smooth_covariates)
       approx_results <- get_approx_results_with_covariates(density_params = density_params,
                                                            covariates =  approx_design_matrix,
                                                            knots_smooth_covariate = knots_smooth_covariate)
