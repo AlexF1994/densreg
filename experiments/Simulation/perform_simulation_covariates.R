@@ -59,7 +59,7 @@ simulate_with_covariates <- function(){
       if (!dir.exists(save_path)) dir.create(save_path, recursive = TRUE)
 
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
-      n_obs_approx <- 5000
+      n_obs_approx <- 1000
       range_smooth_covariates <- c(-5,5)
       approx_design_matrix <- sample_covariates(n_obs_approx, range_smooth_covariates)
       # note that you have to change the range if you change the method for sampling smooth covariates
@@ -84,7 +84,7 @@ simulate_with_covariates <- function(){
       ##### Perform simulation
       count <- 1
       for(i in seq_along(scenarios$n_obs)) {
-        X <- sample_covariates(scenarios$n_obs[i])
+        X <- sample_covariates(scenarios$n_obs[i], range_smooth_covariates)
         for (j in seq_along(scenarios$step_size)) {
           print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", scenarios$n_obs[i], "; Count: ", count))
           sim_result <- lapply(1:n_simulation_runs, run_simulation_with_covariates, sample_type = "bin",
