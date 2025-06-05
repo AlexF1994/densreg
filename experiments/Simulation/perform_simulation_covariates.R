@@ -37,7 +37,7 @@ options(scipen = 999) # preventing scientific notation (in particular when savin
 
 simulate_with_covariates <- function(){
 
-  for (penalized in c(FALSE, TRUE)) {
+  for (penalized in c(TRUE, TRUE)) {
     set.seed(scenarios$seed)
     if (penalized) {
       sp <- NULL
@@ -59,14 +59,16 @@ simulate_with_covariates <- function(){
       if (!dir.exists(save_path)) dir.create(save_path, recursive = TRUE)
 
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
-      n_obs_approx <- 5000
-      range_smooth_covariates <- c(-5,5)
-      approx_design_matrix <- sample_covariates(n_obs_approx, range_smooth_covariates)
+      n_obs_approx <- 1000
+      range_smooth_covariates <- c(-5, 5)
+      range_linear_covariates <- c(0, 4)
+      approx_design_matrix <- sample_covariates(n_obs_approx, range_smooth_covariates, range_linear_covariates)
       # note that you have to change the range if you change the method for sampling smooth covariates
       knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = range_smooth_covariates)
       approx_results <- get_approx_results_with_covariates(density_params = density_params,
                                                            covariates =  approx_design_matrix,
-                                                           knots_smooth_covariate = knots_smooth_covariate)
+                                                           knots_smooth_covariate = knots_smooth_covariate,
+                                                           sp = sp)
       saveRDS(approx_results$theta, paste0(save_path, "/theta.rds"))
 
       coverage_rate <- list()
@@ -84,12 +86,14 @@ simulate_with_covariates <- function(){
       ##### Perform simulation
       count <- 1
       for(i in seq_along(scenarios$n_obs)) {
-        X <- sample_covariates(scenarios$n_obs[i], range_smooth_covariates)
+        X <- sample_covariates(scenarios$n_obs[i], range_smooth_covariates, range_linear_covariates)
+        smooth_covariate_design_matrix <- sum_constrained_spline_design_matrix(X$smooth_variable, knots_smooth_covariate)
         for (j in seq_along(scenarios$step_size)) {
           print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", scenarios$n_obs[i], "; Count: ", count))
           sim_result <- lapply(1:n_simulation_runs, run_simulation_with_covariates, sample_type = "bin",
                                approx_results = approx_results, n_knots = density_params$n_knots, n_obs = scenarios$n_obs[i],
-                               step_size = scenarios$step_size[j], alpha = alpha, sp = sp, bs = "md", covariates = X)
+                               step_size = scenarios$step_size[j], alpha = alpha, sp = sp, bs = "md", covariates = X,
+                               smooth_covariate_design_matrix = smooth_covariate_design_matrix)
           saveRDS(sim_result, paste0(scenario_path, "/n_runs", n_simulation_runs, "_nobs",
                                      scenarios$n_obs[i], "_nbins", n_bins[j], ".rds"))
 

@@ -153,6 +153,7 @@ get_approx_results <-  function(clr_density, n_splines = 10, ord = 4, knots = NU
 get_approx_results_with_covariates <-  function(density_params,
                                                 covariates,
                                                 knots_smooth_covariate,
+                                                sp,
                                                 n_splines = 10,
                                                 ord = 4,
                                                 knots_density_ = NULL,
@@ -189,33 +190,31 @@ get_approx_results_with_covariates <-  function(density_params,
     dta_dens <- rbind(dta_dens, dta_dens_obs)
   }
 
-  xt_c = c(0, 1)
+  xt_c <- list(values_discrete = FALSE, domain_continuous = c(0, 1))
   print("approximating")
   # maybe we can delete the penalization in x direction here as well
   model <- gam(y_clr ~ -1
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(list(xt_c)))
+                    np = FALSE, k = n_splines, sp = sp, xt = list(xt_c))
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
-                    np = FALSE, k = n_splines, by = binary_variable, xt = list(list(xt_c)))
+                    np = FALSE, k = n_splines, by = binary_variable, sp = sp, xt = list(xt_c))
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
-                                    np = FALSE, k = n_splines, by = linear_variable,
-                    xt = list(list(xt_c)))
+                                    np = FALSE, k = n_splines, by = linear_variable, sp = sp,
+                    xt = list(xt_c))
                + ti(quantiles, smooth_variable, bs = c("d","ps"), m = list(c(2, 2), c(2, 2)),
-                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, xt = list(list(xt_c))),
+                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, NULL), xt = list(list(xt_c), NULL)),
                data = dta_dens, knots = list(quantiles = knots_density_, smooth_variable = knots_smooth_covariate),
                method = "REML")
   print("approximating done")
 
   list(theta = model$coefficients,
        knots = knots_density_,
-       base_range = c(1, 9),
-       binary_range = c(10, 18),
-       linear_range = c(19, 27),
-       smooth_range = c(28, length(model$coefficients)),
+       base_range = c(1, 10),
+       binary_range = c(11, 20),
+       linear_range = c(21, 30),
+       smooth_range = c(31, length(model$coefficients)),
        knots_smooth_covariate = knots_smooth_covariate)
-
 }
-
 
 ### Functions to perform a simulation given a true density via a B-spline basis
 ### and corresponding coefficients
@@ -389,7 +388,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
 }
 
 run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), covariates, approx_results,
-                           n_knots, ord = 4, pen_ord = 2, n_obs = 10000, step_size = 0.01,
+                           n_knots, smooth_covariate_design_matrix, ord = 4, pen_ord = 2, n_obs = 10000, step_size = 0.01,
                            alpha = 0.05, sp = NULL, norm_true = NULL,
                            bs = c("md", "ad"), ad_m = 5) {
 
@@ -415,6 +414,7 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
 
   spline_densities <- get_densities_with_covariates(density_params = density_params,
                                              covariates = covariates,
+                                             smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                              calculate_norm = TRUE
                                              )
 
@@ -430,17 +430,17 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
                                    knots = knots,
                                    order = ord)
   # Here, we need one intercept for each unique covariate combination
-  xt_c = c(0, 1)
+  xt_c <- list(values_discrete = FALSE, domain_continuous = c(0, 1))
   print("start fitting Poisson model")
   model <- gam(counts ~ -1
-               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp)
-               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp, by = binary_variable)
-               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
-                    np = FALSE, k = n_splines, xt = list(list(xt_c)), sp = sp, by = linear_variable)
-               + ti(y, smooth_variable, bs = c("d","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
-                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE)
+               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+                    np = FALSE, k = n_splines, xt = list(xt_c), sp = sp)
+               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+                    np = FALSE, k = n_splines, xt = list(xt_c), sp = sp, by = binary_variable)
+               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+                    np = FALSE, k = n_splines, xt = list(xt_c), sp = sp, by = linear_variable)
+               + ti(y, smooth_variable, bs = c("md","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
+                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, NULL), xt = list(list(xt_c), NULL))
                + as.factor(group_id)
                + offset(log(density_data$Delta)),
                data = density_data$df, knots = list(y = knots, smooth_variable = knots_smooth_covariate),
@@ -466,6 +466,7 @@ print("Done fitting Poisson model")
                                      density_name = "spline")
     estimated_spline_densities <- get_densities_with_covariates(density_params = estimated_density_params,
                                                                 covariates = covariates,
+                                                                smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                                                 calculate_norm = TRUE
     )
 
@@ -480,6 +481,7 @@ print("Done fitting Poisson model")
                                 density_name = "spline")
     diff_spline_densities <- get_densities_with_covariates(density_params = diff_density_params,
                                                            covariates = covariates,
+                                                           smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                                            calculate_norm = TRUE
     )
     # here I have continue and calculate the Overall MSE and then break down, also calc mse for each component density
@@ -529,7 +531,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   unique_covariates_for_effect <- covariates_info$unique_covariates_for_effect
   covariate_index_mapping <- covariates_info$covariate_index_mapping
   # do I need the basis with constraint or without?
-  unity_matrix <- diag(1, nrow = n_splines - 1)
+  unity_matrix <- diag(1, nrow = n_splines) # mabe add back - 1
   basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect, knots_smooth_covariate) # I want the coverage for all unique covariates
   basis_functional_intercept <- X[1, base_range[1]:base_range[2]]
   S <- get_subsetting_matrix_S(param_range, length(theta_diff))
@@ -754,7 +756,7 @@ get_kis <- function(spline_densities, estimated_spline_densities,
   #f_hat <- estimated_spline_densities$density_function(quantiles)
 
   se_p <- as.numeric(sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept))
-  if (!is.na(Vc_mixed)) {
+  if (!any(is.na(Vc_mixed))) {
     se_c <- as.numeric(sqrt(t(basis_functional_intercept) %*% Vc_mixed %*% basis_functional_intercept))
   } else {
     se_c <- NA
@@ -917,9 +919,11 @@ plot_interpolated_density <- function(grid, # and here
 }
 
 
-sample_covariates <- function(n_obs, range_smooth_covariates) {
+sample_covariates <- function(n_obs, range_smooth_covariates, range_linear_covariates) {
   binary <- sample(c(0,1), n_obs, replace = TRUE)
-  linear <- rdunif(n_obs, range_smooth_covariates[1], range_smooth_covariates[2])
+  linear_values <- seq(from=range_linear_covariates[1], to=range_linear_covariates[2],
+                       by=0.5)
+  linear <- sample(linear_values, n_obs, replace = TRUE)
   smooth <- rdunif(n_obs, range_smooth_covariates[1], range_smooth_covariates[2])
   covariates <- data.frame(
     binary_variable = binary,
@@ -947,33 +951,33 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
   if (length(object$term) != 1)
     stop("Basis only handles 1D smooths")
   cont_dim <- object$bs.dim
-  object$xt <- object$xt[[1]]
+  xt <- object$xt[[1]]
   # initializing discrete component
-  if (is.null(object$xt$values_discrete)) {
-    object$xt$values_discrete <- c(0, 1)
+  if (is.null(xt$values_discrete)) {
+    xt$values_discrete <- c(0, 1)
   }
-  t_discrete <- object$xt$values_discrete
-  if (is.null(object$xt$weights_discrete)) {
-    object$xt$weights_discrete <- rep(1, length(t_discrete))
+  t_discrete <- xt$values_discrete
+  if (is.null(xt$weights_discrete)) {
+    xt$weights_discrete <- rep(1, length(t_discrete))
   }
-  w_discrete <- object$xt$weights_discrete
+  w_discrete <- xt$weights_discrete
   if (length(t_discrete) != length(w_discrete)) {
     stop("Lengths of values_discrete and weights_discrete have to be the same.")
   }
 
-  if (is.null(object$xt$domain_continuous)) {
-    object$xt$domain_continuous <- range(t_discrete, x)
+  if (is.null(xt$domain_continuous)) {
+    xt$domain_continuous <- range(t_discrete, x)
   }
   cont_positions <- which(!(x %in% t_discrete))
   x_cont <- x[cont_positions]
-  if (object$xt$domain_continuous[1] > min(x_cont) ||
-      object$xt$domain_continuous[2] < max(x_cont)) {
+  if (xt$domain_continuous[1] > min(x_cont) ||
+      xt$domain_continuous[2] < max(x_cont)) {
     stop("Given domain does not include data corresponding to continuous component.")
   }
 
   # add discrete value t_{D+1} and weight corresponding to the continuous component
   t_discrete[length(t_discrete) + 1] <- range(t_discrete, x)[2] + 1
-  w_discrete[length(w_discrete) + 1] <- diff(object$xt$domain_continuous)
+  w_discrete[length(w_discrete) + 1] <- diff(xt$domain_continuous)
 
   discrete_dim <- length(t_discrete)
   object$bs.dim <- object$bs.dim + discrete_dim # combined dimension (before implementing constraints!)
@@ -983,8 +987,8 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
 
   k <- sort(knots[[object$term]])
   if (is.null(k)) {
-    xl <- object$xt$domain_continuous[1]
-    xu <- object$xt$domain_continuous[2]
+    xl <- xt$domain_continuous[1]
+    xu <- xt$domain_continuous[2]
   } else if (length(k) == 2) {
     xl <- min(k)
     xu <- max(k)
@@ -1018,8 +1022,8 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
     # } ### E: No, see above
   }
   ord <- m[1] + 2
-  if (k[ord] != object$xt$domain_continuous[1] ||
-      k[length(k) - (ord - 1)] != object$xt$domain_continuous[2])
+  if (k[ord] != xt$domain_continuous[1] ||
+      k[length(k) - (ord - 1)] != xt$domain_continuous[2])
     warning("Knots do not match domain of continuous component.")
   if (is.null(object$deriv)) {
     object$deriv <- 0
@@ -1070,11 +1074,11 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
     }
     S_cont <- t(Z_cont) %*% crossprod(D_cont) %*% Z_cont
 
-    if (is.null(object$xt$penalty_discrete)) {
+    if (is.null(xt$penalty_discrete)) {
       D_discrete <- matrix(0, nrow = discrete_dim, ncol = discrete_dim) # default: discrete component unpenalized
-    } else if (object$xt$penalty_discrete > 0) {
-      D_discrete <- diff(diag(discrete_dim), differences = object$xt$penalty_discrete)
-    } else if (object$xt$penalty_discrete == 0) {
+    } else if (xt$penalty_discrete > 0) {
+      D_discrete <- diff(diag(discrete_dim), differences = xt$penalty_discrete)
+    } else if (xt$penalty_discrete == 0) {
       D_discrete <- diag(discrete_dim)
     } else {
       warning("penalty_discrete has to be a non-negative integer. No penalty for discrete component is used.")
@@ -1091,12 +1095,12 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
                rbind(matrix(0, nrow = nrow(S_cont), ncol = ncol(S_discrete)), S_discrete))
 
     object$S <- list(S)
-    object$rank <- ifelse(is.null(object$xt$penalty_discrete), cont_dim - m[2],
-                          ifelse(object$xt$penalty_discrete == 0,
+    object$rank <- ifelse(is.null(xt$penalty_discrete), cont_dim - m[2],
+                          ifelse(xt$penalty_discrete == 0,
                                  cont_dim - m[2] + discrete_dim - 1, # we loose one dimension when applying constraint
-                                 cont_dim - m[2] + discrete_dim - object$xt$penalty_discrete))
-    object$null.space.dim <- ifelse(is.null(object$xt$penalty_discrete), m[2],
-                                    m[2] + object$xt$penalty_discrete)
+                                 cont_dim - m[2] + discrete_dim - xt$penalty_discrete))
+    object$null.space.dim <- ifelse(is.null(xt$penalty_discrete), m[2],
+                                    m[2] + xt$penalty_discrete)
   }
   object$knots <- k
   object$m <- m
@@ -1104,10 +1108,49 @@ smooth.construct.md.smooth.spec <- function(object, data, knots) {
   object
 }
 
+Predict.matrix.mdspline.smooth <- function (object, data) {
+  m <- object$m[1] + 1
+  ll <- object$xt[[1]]$domain_continuous[1] # object$knots[m + 1]
+  ul <- object$xt[[1]]$domain_continuous[2] # object$knots[length(object$knots) - m]
+  m <- m + 1
+  x <- data[[object$term]]
+  t_discrete <- object$values_discrete
+  cont_positions <- which(!(x %in% t_discrete[-length(t_discrete)])) # last knot is artificial, corresponding to continuous component
+  x_cont <- x[cont_positions]
+  x_discrete <- x
+  x_discrete[cont_positions] <- max(t_discrete)
+  ind <- list(cont = (x_cont <= ul & x_cont >= ll), discrete = (x %in% t_discrete[-length(t_discrete)]))
+  if (is.null(object$deriv)) {
+    object$deriv <- 0
+  } else if (object$deriv != 0) {
+    warning("The mixed density smoother is not intended to be used for derivatives. Reasonable behavior is only guaranteed for deriv = 0.")
+  }
+  if (sum(sapply(ind, sum)) == length(x)) {
+    k <- object$knots
+    Z_cont <- object$Z$cont
+    design_cont <- matrix(0, nrow = length(x), ncol = ncol(Z_cont))
+    design_cont[cont_positions, ] <- splines::splineDesign(knots = k, x_cont, ord = m,
+                                                           derivs = object$deriv) %*% Z_cont
+
+    k_discrete <- object$knots_discrete
+    Z_discrete <- object$Z$discrete
+    design_discrete <- splines::splineDesign(k_discrete, x_discrete, 1)  %*% Z_discrete
+    X <- cbind(design_cont, design_discrete)
+  } else {
+    stop("Supplied data is not in support of underlying density!")
+  }
+  if (object$mono == 0){
+    X
+  } else {
+    stop("SCOP splines are not supported yet!")
+  }
+}
+
+
 
 smooth.construct.d.smooth.spec <- function(object, data, knots) {
   x <- data[[object$term]]
-  object$xt <- object$xt[[1]]
+  xt <- object$xt[[1]]
   # getting specifications for continuous component
   if (length(object$p.order) == 1)
     m <- rep(object$p.order, 2)
@@ -1122,19 +1165,19 @@ smooth.construct.d.smooth.spec <- function(object, data, knots) {
   if (length(object$term) != 1)
     stop("Basis only handles 1D smooths")
   cont_dim <- object$bs.dim
-  if (is.null(object$xt$domain_continuous)) {
-    object$xt$domain_continuous <- c(0, 1)
+  if (is.null(xt$domain_continuous)) {
+    xt$domain_continuous <- c(0, 1)
   }
   x_cont <- x
-  if (object$xt$domain_continuous[1] > min(x_cont) ||
-      object$xt$domain_continuous[2] < max(x_cont)) {
+  if (xt$domain_continuous[1] > min(x_cont) ||
+      xt$domain_continuous[2] < max(x_cont)) {
     stop("Given domain does not include data corresponding to continuous component.")
   }
 
   k <- sort(knots[[object$term]])
   if (is.null(k)) {
-    xl <- object$xt$domain_continuous[1]
-    xu <- object$xt$domain_continuous[2]
+    xl <- xt$domain_continuous[1]
+    xu <- xt$domain_continuous[2]
   } else if (length(k) == 2) {
     xl <- min(k)
     xu <- max(k)
@@ -1168,8 +1211,8 @@ smooth.construct.d.smooth.spec <- function(object, data, knots) {
     # } ### E: No, see above
   }
   ord <- m[1] + 2
-  if (k[ord] != object$xt$domain_continuous[1] ||
-      k[length(k) - (ord - 1)] != object$xt$domain_continuous[2])
+  if (k[ord] != xt$domain_continuous[1] ||
+      k[length(k) - (ord - 1)] != xt$domain_continuous[2])
     warning("Knots do not match domain of continuous component.")
   if (is.null(object$deriv)) {
     object$deriv <- 0
@@ -1219,7 +1262,7 @@ smooth.construct.d.smooth.spec <- function(object, data, knots) {
     S <- S_cont
 
     object$S <- list(S)
-    object$rank <- cont_dim - m[2] - 1
+    object$rank <- cont_dim - m[2]
     object$null.space.dim <- m[2]
   }
   object$knots <- k
@@ -1231,8 +1274,8 @@ smooth.construct.d.smooth.spec <- function(object, data, knots) {
 
 Predict.matrix.dspline.smooth <- function(object, data) {
   m <- object$m[1] + 1
-  ll <- object$xt$domain_continuous[1] # object$knots[m + 1]
-  ul <- object$xt$domain_continuous[2] # object$knots[length(object$knots) - m]
+  ll <- xt$domain_continuous[1] # object$knots[m + 1]
+  ul <- xt$domain_continuous[2] # object$knots[length(object$knots) - m]
   m <- m + 1
   x <- data[[object$term]]
   x_cont <- x

@@ -2,11 +2,10 @@ library("purrr")
 library("truncnorm")
 library("rlist")
 
-eps = 0.000001
 
 
 get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
-                          component=FALSE, ...) {
+                          component=FALSE, Z_cont=NULL, ...) {
   implemented_densities <- c("constant", "line", "beta", "truncated_normal", "spline")
 
   if (density_params$density_name == "constant") {
@@ -58,11 +57,14 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
                                             density_params$knots, # for now I assume the same knots for every component
                                             density_params$knots_smooth_covariate,
                                             density_params$order,
-                                            kwargs$smooth_variable)
+                                            kwargs$smooth_variable,
+                                            Z_cont,
+                                            kwargs$smooth_covariate_design_matrix)
     } else{
     clr_density <- get_spline_clr_density(theta,
                                           density_params$knots, # for now I assume the same knots for every component
-                                          density_params$order)
+                                          density_params$order,
+                                          Z_cont)
     }
 
     density_function <- partial(spline_density,
@@ -81,8 +83,8 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
   if (calculate_norm) {
     norm_clr_density <- integrate(partial(clr_density_squared,
                                           clr_density = clr_density),
-                                  lower = 0 + eps,
-                                  upper = 1 - eps, subdivisions = 1000)$value
+                                  lower = 0 ,
+                                  upper = 1, subdivisions = 100)$value
   }
   else {
     norm_clr_density <- NULL
@@ -122,23 +124,34 @@ get_theta_for_component <- function(density_params, component) {
 }
 
 
-get_densities_with_covariates <- function(density_params, covariates, calculate_norm=FALSE) {
+get_densities_with_covariates <- function(density_params, covariates, smooth_covariate_design_matrix=NULL,
+                                          calculate_norm=FALSE) {
   # I get one density for every observation
   # I will order the densities via observation number --> list with n entries
+  Z_cont <- NULL
+  # this part could be also done on the highest level
+  if (density_params$density_name == "spline") {
+    C_cont <- sapply(1:(length(density_params$knots) - density_params$order), function(j) integrate(function(x)
+      splines::splineDesign(knots = density_params$knots, x, ord = density_params$order, derivs = 0)[, j],
+      lower = density_params$knots[density_params$order], upper = density_params$knots[length(density_params$knots) - (density_params$order - 1)])$value)
+    Z_cont <- MASS::Null(C_cont)
+  }
   n_obs <- nrow(covariates)
   densities <- lapply(1:n_obs, get_densities_with_covariates_single,
                       covariates = covariates, density_params = density_params,
-                      calculate_norm = calculate_norm)
+                      calculate_norm = calculate_norm, Z_cont = Z_cont,
+                      smooth_covariate_design_matrix = smooth_covariate_design_matrix)
 
   return(densities)
 }
 
-get_densities_with_covariates_single <- function(observation_index, density_params, covariates, calculate_norm) {
+get_densities_with_covariates_single <- function(observation_index, density_params, covariates, calculate_norm, Z_cont,
+                                                 smooth_covariate_design_matrix) {
   # base density
-  base_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "base")
+  base_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "base", Z_cont = Z_cont)
   # binary density
   if (covariates$binary_variable[observation_index] == 1) {
-    binary_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "binary")
+    binary_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "binary", Z_cont = Z_cont)
   }
 
   else {
@@ -147,18 +160,25 @@ get_densities_with_covariates_single <- function(observation_index, density_para
 
   # linear density
   linear_variable <- covariates$linear_variable[observation_index]
-  density_part <- get_densities(density_params, calculate_norm = FALSE, component = "linear")
+  density_part <- get_densities(density_params, calculate_norm = FALSE, component = "linear", Z_cont = Z_cont)
   linear_density_component <- list(density_function = partial(pertubated_density, density_function = density_part$density_function,
                                                               pertubator = linear_variable),
                                    clr_density_function =  partial(scaled_clr_density, clr_density_function = density_part$clr_density_function,
                                                                    pertubator = linear_variable))
   # smooth density
   smooth_variable = covariates$smooth_variable[observation_index]
+  smooth_variable_design_matrix <- NULL
+
+  if (!is.null(smooth_covariate_design_matrix)) {
+    smooth_variable_design_matrix <- smooth_covariate_design_matrix[observation_index,]
+  }
 
 
   smooth_density_component <- get_densities(density_params, param_scale = smooth_variable, component = "smooth",
                                             calculate_norm = calculate_norm,
-                                            smooth_variable = smooth_variable)
+                                            smooth_variable = smooth_variable,
+                                            Z_cont = Z_cont,
+                                            smooth_covariate_design_matrix = smooth_variable_design_matrix)
 
   density_components <- list(base_density_component,
                              binary_density_component,
@@ -178,12 +198,12 @@ get_densities_with_covariates_single <- function(observation_index, density_para
                                           clr_density = linear_density_component$clr_density_function),
                                   lower = 0,
                                   upper = 1,
-                                  subdivisions = 1000)$value
+                                  subdivisions = 100)$value
     norm_clr_density <- integrate(partial(clr_density_squared,
                                           clr_density = clr_density_function),
                                   lower = 0,
                                   upper = 1,
-                                  subdivisions = 1000)$value
+                                  subdivisions = 100)$value
     densities <- list.append(densities,
                              norm_clr_density = norm_clr_density,
                              norm_clr_density_base = base_density_component$norm_clr_density,
@@ -279,7 +299,7 @@ composite_clr_density <- function(components, quantiles, component_name = "all")
 
 clr <- function(density_function, quantiles) {
   integral_log_density <- integrate(function(x) log(density_function(x)),
-                           lower = 0 + eps, upper = 1 - eps, subdivisions = 1000)$value
+                           lower = 0 , upper = 1, subdivisions = 100)$value
   log(density_function(quantiles)) - integral_log_density
 }
 
@@ -291,36 +311,39 @@ clr_density_squared <- function(clr_density, quantiles) {
 
 inverse_clr <- function(clr_density, quantiles){
   integral_exp_clr <- integrate(function(x) exp(clr_density(x)),
-                                lower = 0 + eps, upper = 1 - eps, subdivisions = 1000)$value
+                                lower = 0 , upper = 1, subdivisions = 100)$value
 
   exp(clr_density(quantiles)) / integral_exp_clr
 }
 
-get_spline_clr_density <- function(theta, knots, order) {
-  partial(spline_clr_density, theta = theta, knots = knots, order = order)
+get_spline_clr_density <- function(theta, knots, order, Z_cont) {
+  partial(spline_clr_density, theta = theta, knots = knots, order = order, Z_cont = Z_cont)
 }
 
 
-get_multivariate_spline_clr_density <- function(theta, knots, knots_covariate, order, covariate) {
+get_multivariate_spline_clr_density <- function(theta, knots, knots_covariate, order, covariate, Z_cont,
+                                                smooth_covariate_design_matrix) {
   partial(multivariate_spline_clr_density, theta = theta, knots = knots,
-          knots_covariate = knots_covariate, order = order, covariate = covariate)
+          knots_covariate = knots_covariate, order = order, covariate = covariate,
+          Z_cont = Z_cont, smooth_covariate_design_matrix = smooth_covariate_design_matrix)
 }
 
 
-spline_clr_density <- function(quantiles, theta, knots, order) {
+spline_clr_density <- function(quantiles, theta, knots, order, Z_cont) {
 
-  design_matrix <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = order)
+  design_matrix <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = order, Z_cont = Z_cont)
   values <- design_matrix %*% theta
 
   values
 }
 
 
-multivariate_spline_clr_density <- function(quantiles, theta, knots, knots_covariate, order, covariate) {
+multivariate_spline_clr_density <- function(quantiles, theta, knots, knots_covariate, order, covariate, Z_cont,
+                                            smooth_covariate_design_matrix) {
 
-  design_matrix_y <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = order)
-  design_matrix_x <- sum_constrained_spline_design_matrix(x = covariate, knots = knots_covariate, ord = order)
-  design_matrix <- kronecker(design_matrix_x, design_matrix_y)
+  design_matrix_y <- constrained_spline_design_matrix(x = quantiles, knots = knots, ord = order, Z_cont = Z_cont)
+  design_matrix_x <- smooth_covariate_design_matrix
+  design_matrix <- kronecker(t(design_matrix_x), design_matrix_y)
   values <- design_matrix %*% theta
 
   values
@@ -346,12 +369,36 @@ spline_density <- function(quantiles, spline_clr_density) {
 # row of the matrix contains the evaluations of the constrained spline functions
 # (defined by the knot vector and the order) at the i'th value of x.
 
-constrained_spline_design_matrix <- function(x, knots, ord = 4) {
-  C <- sapply(1:(length(knots) - ord), function(j) integrate(function(x)
-    splines::splineDesign(knots = knots, x, ord = ord, derivs = 0)[, j],
-    lower = knots[ord], upper = knots[length(knots) - (ord-1)])$value)
-  Z <- MASS::Null(C)
-  X_L20 <- splines::splineDesign(knots = knots, x, ord = ord, derivs = 0) %*% Z
+constrained_spline_design_matrix <- function(x, knots, ord = 4, Z_cont = NULL) {
+  t_discrete <- c(0)
+  w_discrete <- rep(1, length(t_discrete))
+  cont_positions <- which(!(x %in% t_discrete))
+  x_cont <- x[cont_positions]
+  t_discrete[length(t_discrete) + 1] <- range(t_discrete, x)[2] + 1
+  w_discrete[length(w_discrete) + 1] <- diff(c(0,1))
+  x_discrete <- x
+  x_discrete[cont_positions] <- max(t_discrete)
+
+  if (is.null(Z_cont)) {
+    C_cont <- sapply(1:(length(knots) - ord), function(j) integrate(function(x)
+      splines::splineDesign(knots = knots, x, ord = ord, derivs = 0)[, j],
+      lower = knots[ord], upper = knots[length(knots) - (ord - 1)])$value)
+    Z_cont <- MASS::Null(C_cont)
+  }
+  design_cont <- matrix(0, nrow = length(x), ncol = ncol(Z_cont))
+  design_cont[cont_positions, ] <- splines::splineDesign(knots = knots, x_cont, ord = ord,
+                                                         derivs = 0) %*% Z_cont
+
+  k_discrete <- sapply(seq_len(length(t_discrete) + 1),
+                       function(j) mean(c(min(t_discrete) - 1, t_discrete, max(t_discrete) + 1)[j:(j+1)]))
+  knots_discrete <- k_discrete
+  values_discrete <- t_discrete
+  C_discrete <- w_discrete # integrals of basis functions are equal to weights
+  Z_discrete <- MASS::Null(C_discrete)
+  design_discrete <- splines::splineDesign(k_discrete, x_discrete, 1)  %*% Z_discrete
+
+  X_L20 <- cbind(design_cont, design_discrete) # combine both design matrices to get final design matrix
+  X_L20
 }
 
 constrained_tensor_spline_design_matrix <- function(x, knots, ord = 4) {
@@ -399,13 +446,12 @@ sample_from_density <- function(densities, n_samples, bins,
 # - use sum for spline approximations
 # use quantiles for true densities
 get_bin_probabilities <- function(bins, densities, quantiles=NULL) {
-  eps <- 0.0000001
   n_bins <- length(bins) - 1
   if (densities$density_name == "spline") {
     step_size = 1 / n_bins
     linear_predictor <- c(log(step_size) + densities$clr_density_function(quantiles))
 
-    bin_probabilities <- (exp(linear_predictor) + (eps / n_bins)) / (sum(exp(linear_predictor)) + eps)
+    bin_probabilities <- (exp(linear_predictor) / (sum(exp(linear_predictor))))
     if (any(is.nan(bin_probabilities))) {
       print("here")
     }
