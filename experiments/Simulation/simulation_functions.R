@@ -514,7 +514,7 @@ print("Done fitting Poisson model")
                                                    coverage_smooth)
 
   print(i)
-  return(list(data = df, model = model, estimated_spline_densities = estimated_spline_densities,
+  return(list(data = density_data$df, model = model, estimated_spline_densities = estimated_spline_densities,
               MSE = MSE,  coverage_base = coverage_base, coverage_binary = coverage_binary,
               coverage_linear = coverage_linear, coverage_smooth = coverage_smooth,
               coverage_whole_density = coverage_whole_density))
