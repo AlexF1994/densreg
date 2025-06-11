@@ -202,17 +202,17 @@ get_approx_results_with_covariates <-  function(density_params,
                                     np = FALSE, k = n_splines, by = linear_variable, sp = sp,
                     xt = list(xt_c))
                + ti(quantiles, smooth_variable, bs = c("d","ps"), m = list(c(2, 2), c(2, 2)),
-                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, NULL), xt = list(list(xt_c), NULL)),
+                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, -1), xt = list(list(xt_c), NULL)),
                data = dta_dens, knots = list(quantiles = knots_density_, smooth_variable = knots_smooth_covariate),
                method = "REML")
   print("approximating done")
 
   list(theta = model$coefficients,
        knots = knots_density_,
-       base_range = c(1, 10),
-       binary_range = c(11, 20),
-       linear_range = c(21, 30),
-       smooth_range = c(31, length(model$coefficients)),
+       base_range = c(1, 9),
+       binary_range = c(10, 18),
+       linear_range = c(19, 27),
+       smooth_range = c(28, length(model$coefficients)),
        knots_smooth_covariate = knots_smooth_covariate)
 }
 
@@ -431,16 +431,16 @@ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), c
                                    order = ord)
   # Here, we need one intercept for each unique covariate combination
   xt_c <- list(values_discrete = FALSE, domain_continuous = c(0, 1))
-  print("start fitting Poisson model")
+  print("Start fitting Poisson model")
   model <- gam(counts ~ -1
-               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
                     np = FALSE, k = n_splines, xt = list(xt_c), sp = sp)
-               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
                     np = FALSE, k = n_splines, xt = list(xt_c), sp = sp, by = binary_variable)
-               + ti(y, bs = "md", m = list(c(ord - 2, pen_ord)), mc = FALSE,
+               + ti(y, bs = "d", m = list(c(ord - 2, pen_ord)), mc = FALSE,
                     np = FALSE, k = n_splines, xt = list(xt_c), sp = sp, by = linear_variable)
-               + ti(y, smooth_variable, bs = c("md","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
-                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, NULL), xt = list(list(xt_c), NULL))
+               + ti(y, smooth_variable, bs = c("d","ps"), m = list(c(ord - 2, pen_ord), c(ord - 2, pen_ord)),
+                    k = c(n_splines, 8), mc = c(FALSE, TRUE), np = FALSE, sp = c(sp, -1), xt = list(list(xt_c), NULL))
                + as.factor(group_id)
                + offset(log(density_data$Delta)),
                data = density_data$df, knots = list(y = knots, smooth_variable = knots_smooth_covariate),
@@ -531,7 +531,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   unique_covariates_for_effect <- covariates_info$unique_covariates_for_effect
   covariate_index_mapping <- covariates_info$covariate_index_mapping
   # do I need the basis with constraint or without?
-  unity_matrix <- diag(1, nrow = n_splines) # mabe add back - 1
+  unity_matrix <- diag(1, nrow = n_splines - 1) # maybe add back - 1
   basis_effect <- get_basis_for_effect(effect_type, unique_covariates_for_effect, knots_smooth_covariate) # I want the coverage for all unique covariates
   basis_functional_intercept <- X[1, base_range[1]:base_range[2]]
   S <- get_subsetting_matrix_S(param_range, length(theta_diff))
@@ -765,7 +765,7 @@ get_kis <- function(spline_densities, estimated_spline_densities,
   CI_low_p <- f_hat_clr - qnorm(1 - alpha / 2) * se_p
   CI_up_c <- f_hat_clr + qnorm(1 - alpha / 2) * se_c
   CI_low_c <- f_hat_clr - qnorm(1 - alpha / 2) * se_c
-  f_true_clr <- spline_densities$clr_density_function(quantiles)
+  f_true_clr <- spline_densities$clr_density_function(quantiles, effect_type)
   CI_p_check <- (CI_low_p <= f_true_clr) & (f_true_clr <= CI_up_p)
   CI_c_check <- (CI_low_c <= f_true_clr) & (f_true_clr <= CI_up_c)
   CIs <- data.frame(f_true_clr, CI_low_c, CI_up_c, CI_c_check, CI_low_p, CI_up_p, CI_p_check)
@@ -1273,6 +1273,7 @@ smooth.construct.d.smooth.spec <- function(object, data, knots) {
 
 
 Predict.matrix.dspline.smooth <- function(object, data) {
+  xt <- object$xt[[1]]
   m <- object$m[1] + 1
   ll <- xt$domain_continuous[1] # object$knots[m + 1]
   ul <- xt$domain_continuous[2] # object$knots[length(object$knots) - m]

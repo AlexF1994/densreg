@@ -370,34 +370,16 @@ spline_density <- function(quantiles, spline_clr_density) {
 # (defined by the knot vector and the order) at the i'th value of x.
 
 constrained_spline_design_matrix <- function(x, knots, ord = 4, Z_cont = NULL) {
-  t_discrete <- c(0)
-  w_discrete <- rep(1, length(t_discrete))
-  cont_positions <- which(!(x %in% t_discrete))
-  x_cont <- x[cont_positions]
-  t_discrete[length(t_discrete) + 1] <- range(t_discrete, x)[2] + 1
-  w_discrete[length(w_discrete) + 1] <- diff(c(0,1))
-  x_discrete <- x
-  x_discrete[cont_positions] <- max(t_discrete)
-
   if (is.null(Z_cont)) {
     C_cont <- sapply(1:(length(knots) - ord), function(j) integrate(function(x)
       splines::splineDesign(knots = knots, x, ord = ord, derivs = 0)[, j],
       lower = knots[ord], upper = knots[length(knots) - (ord - 1)])$value)
     Z_cont <- MASS::Null(C_cont)
   }
-  design_cont <- matrix(0, nrow = length(x), ncol = ncol(Z_cont))
-  design_cont[cont_positions, ] <- splines::splineDesign(knots = knots, x_cont, ord = ord,
+  design_cont <- splines::splineDesign(knots = knots, x, ord = ord,
                                                          derivs = 0) %*% Z_cont
 
-  k_discrete <- sapply(seq_len(length(t_discrete) + 1),
-                       function(j) mean(c(min(t_discrete) - 1, t_discrete, max(t_discrete) + 1)[j:(j+1)]))
-  knots_discrete <- k_discrete
-  values_discrete <- t_discrete
-  C_discrete <- w_discrete # integrals of basis functions are equal to weights
-  Z_discrete <- MASS::Null(C_discrete)
-  design_discrete <- splines::splineDesign(k_discrete, x_discrete, 1)  %*% Z_discrete
-
-  X_L20 <- cbind(design_cont, design_discrete) # combine both design matrices to get final design matrix
+  X_L20 <- design_cont
   X_L20
 }
 
