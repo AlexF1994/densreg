@@ -387,12 +387,11 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
               statistic_vp = chi_statistic_Vp, coverage_pw = CIs))
 }
 
-run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), covariates, approx_results,
+ run_simulation_with_covariates <- function(i, sample_type = c("bin", "value"), covariates, approx_results,
                            n_knots, smooth_covariate_design_matrix, ord = 4, pen_ord = 2, n_obs = 10000, step_size = 0.01,
                            alpha = 0.05, sp = NULL, norm_true = NULL,
                            bs = c("md", "ad"), ad_m = 5) {
 
-  # brauche ich n_knots überhaupt irgendwo?
   sample_type <- match.arg(sample_type)
   bs <- match.arg(bs)
   knots <- approx_results$knots
@@ -570,24 +569,55 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
     # I store the different As in hash table to retrieve them fast for overall density
     # KIs and coverage
     A_for_effect_bases[[unique_covariates_for_effect[i]]] <- A_for_effect_base
-    Vp_mixed <- mixed_basis %*% Vp_inv %*% t(mixed_basis)
-    Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
 
-    if (!any(is.na(Vc_inv))) {
-      Vc_mixed <- mixed_basis %*% Vc_inv %*% t(mixed_basis)
-      Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
-      chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
+    if (!("try-error" %in% class(Vp_inv))) {
+      Vp_mixed <- mixed_basis %*% Vp_inv %*% t(mixed_basis)
+      if (nrow(mixed_basis) == ncol(mixed_basis)) {
+        Vp_mixed_inv <- solve(t(mixed_basis)) %*% Vp %*% solve(mixed_basis)
+      }
+      else {
+        Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
+      }
+      if (!("try-error" %in% class(Vp_mixed_inv))) {
+        chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
+      }
+      else {
+        Vp_mixed_inv <- NA
+        chi_statistic_Vp[i] <- NA
+      }
+
     } else {
+      Vp_inv <- NA
+      Vp_mixed_inv <- NA
+      Vp_mixed <- NA
+      chi_statistic_Vp[i] <- NA
+    }
+
+    if (!any(is.na(Vc_inv)) & !("try-error" %in% class(Vc_inv))) {
+      Vc_mixed <- mixed_basis %*% Vc_inv %*% t(mixed_basis)
+      if (nrow(mixed_basis) == ncol(mixed_basis)) {
+        Vc_mixed_inv <- solve(t(mixed_basis)) %*% Vc %*% solve(mixed_basis)
+      }
+      else {
+        Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
+      }
+      if (!("try-error" %in% class(Vc_mixed_inv))) {
+        chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
+      }
+      else {
+        Vc_mixed_inv <- NA
+        chi_statistic_Vc[i] <- NA
+      }
+    } else {
+      Vc_inv <- NA
       Vc_mixed_inv <- NA
       Vc_mixed <- NA
       chi_statistic_Vc[i] <- NA
     }
 
-
     success <- ifelse("try-error" %in% union(class(Vc_mixed_inv), class(Vp_mixed_inv)), FALSE, TRUE)
 
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
-    chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
     ki_infos[[i]] <- get_kis(spline_densities[[relevant_index]], estimated_spline_densities[[relevant_index]],
@@ -677,14 +707,46 @@ get_coverage_density <- function(model, theta_diff, base_range,
 
     theta_diff_A <- A_density %*% theta_diff
 
-    Vp_mixed <- A_density %*% Vp_inv %*% t(A_density)
-    Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
+    if (!any(is.na(Vp_inv)) & !("try-error" %in% class(Vp_inv))) {
+      Vp_mixed <- A_density %*% Vp_inv %*% t(A_density)
+      if (nrow(A_density) == ncol(A_density)) {
+        Vp_mixed_inv <- solve(t(A_density)) %*% Vp %*% solve(A_density)
+      }
+      else {
+        Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
+      }
+      if (!("try-error" %in% class(Vp_mixed_inv))) {
+        chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
+      }
+      else {
+        Vp_mixed_inv <- NA
+        chi_statistic_Vp[i] <- NA
+      }
 
-    if (!any(is.na(Vc_inv))) {
-      Vc_mixed <- A_density %*% Vc_inv %*% t(A_density)
-      Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
-      chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
     } else {
+      Vp_inv <- NA
+      Vp_mixed_inv <- NA
+      Vp_mixed <- NA
+      chi_statistic_Vp[i] <- NA
+    }
+
+    if (!any(is.na(Vc_inv)) & !("try-error" %in% class(Vc_inv))) {
+      Vc_mixed <- A_density %*% Vc_inv %*% t(A_density)
+      if (nrow(A_density) == ncol(A_density)) {
+        Vc_mixed_inv <- solve(t(A_density)) %*% Vc %*% solve(A_density)
+      }
+      else {
+        Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
+      }
+      if (!("try-error" %in% class(Vc_mixed_inv))) {
+        chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
+      }
+      else {
+        Vc_mixed_inv <- NA
+        chi_statistic_Vc[i] <- NA
+      }
+    } else {
+      Vc_inv <- NA
       Vc_mixed_inv <- NA
       Vc_mixed <- NA
       chi_statistic_Vc[i] <- NA
@@ -693,7 +755,6 @@ get_coverage_density <- function(model, theta_diff, base_range,
     success <- ifelse("try-error" %in% union(class(Vc_mixed_inv), class(Vp_mixed_inv)), FALSE, TRUE)
 
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
-    chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
     ki_infos[[i]] <- get_kis(spline_densities[[i]], estimated_spline_densities[[i]],
@@ -754,8 +815,11 @@ get_kis <- function(spline_densities, estimated_spline_densities,
                     quantiles) {
   f_hat_clr <- estimated_spline_densities$clr_density_function(quantiles, effect_type)
   #f_hat <- estimated_spline_densities$density_function(quantiles)
-
-  se_p <- as.numeric(sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept))
+  if (!any(is.na(Vp_mixed))) {
+    se_p <- as.numeric(sqrt(t(basis_functional_intercept) %*% Vp_mixed %*% basis_functional_intercept))
+  } else {
+    se_p <- NA
+  }
   if (!any(is.na(Vc_mixed))) {
     se_c <- as.numeric(sqrt(t(basis_functional_intercept) %*% Vc_mixed %*% basis_functional_intercept))
   } else {
