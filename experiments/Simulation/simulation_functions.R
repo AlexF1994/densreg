@@ -444,79 +444,95 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
                + offset(log(density_data$Delta)),
                data = density_data$df, knots = list(y = knots, smooth_variable = knots_smooth_covariate),
                method = "REML", family = poisson())
-print("Done fitting Poisson model")
+  print("Done fitting Poisson model")
 
-    # remove intercepts per covariate combination (here no covariates, i.e., one intercept)
-    n_groups <- max(density_data$df$group_id)
-    n_params <- length(model$coefficients)
-    X <- model.matrix(model)[, (n_groups + 1):n_params]
-    knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots
-    theta_hat <- model$coefficients[(n_groups + 1):n_params]
-    theta_diff <- theta - theta_hat
+  # remove intercepts per covariate combination (here no covariates, i.e., one intercept)
+  n_groups <- max(density_data$df$group_id)
+  n_params <- length(model$coefficients)
+  X <- model.matrix(model)[, (n_groups + 1):n_params]
+  knots_smooth_covariate_estimate <- model$smooth[[4]]$margin[[2]]$knots
+  theta_hat <- model$coefficients[(n_groups + 1):n_params]
+  theta_diff <- theta - theta_hat
 
-    estimated_density_params <- list(theta = theta_hat,
-                                     knots = knots,
-                                     knots_smooth_covariate = knots_smooth_covariate_estimate,
-                                     order = ord,
-                                     base_range = base_range,
-                                     binary_range = binary_range,
-                                     linear_range = linear_range,
-                                     smooth_range = smooth_range,
-                                     density_name = "spline")
-    estimated_spline_densities <- get_densities_with_covariates(density_params = estimated_density_params,
-                                                                covariates = covariates,
-                                                                smooth_covariate_design_matrix = smooth_covariate_design_matrix,
-                                                                calculate_norm = TRUE
-    )
+  estimated_density_params <- list(theta = theta_hat,
+                                   knots = knots,
+                                   knots_smooth_covariate = knots_smooth_covariate_estimate,
+                                   order = ord,
+                                   base_range = base_range,
+                                   binary_range = binary_range,
+                                   linear_range = linear_range,
+                                   smooth_range = smooth_range,
+                                   density_name = "spline")
+  estimated_spline_densities <- get_densities_with_covariates(density_params = estimated_density_params,
+                                                              covariates = covariates,
+                                                              smooth_covariate_design_matrix = smooth_covariate_design_matrix,
+                                                              calculate_norm = TRUE
+  )
 
-    diff_density_params <- list(theta = theta_diff,
-                                knots = knots,
-                                knots_smooth_covariate = knots_smooth_covariate_estimate,
-                                order = ord,
-                                base_range = base_range,
-                                binary_range = binary_range,
-                                linear_range = linear_range,
-                                smooth_range = smooth_range,
-                                density_name = "spline")
-    diff_spline_densities <- get_densities_with_covariates(density_params = diff_density_params,
-                                                           covariates = covariates,
-                                                           smooth_covariate_design_matrix = smooth_covariate_design_matrix,
-                                                           calculate_norm = TRUE
-    )
-    # here I have continue and calculate the Overall MSE and then break down, also calc mse for each component density
-    # the coverage rates for all components and the overall densitiy
-    MSE <- calculate_mse(spline_densities, diff_spline_densities)
+  diff_density_params <- list(theta = theta_diff,
+                              knots = knots,
+                              knots_smooth_covariate = knots_smooth_covariate_estimate,
+                              order = ord,
+                              base_range = base_range,
+                              binary_range = binary_range,
+                              linear_range = linear_range,
+                              smooth_range = smooth_range,
+                              density_name = "spline")
+  diff_spline_densities <- get_densities_with_covariates(density_params = diff_density_params,
+                                                         covariates = covariates,
+                                                         smooth_covariate_design_matrix = smooth_covariate_design_matrix,
+                                                         calculate_norm = TRUE
+  )
+  # here I have continue and calculate the Overall MSE and then break down, also calc mse for each component density
+  # the coverage rates for all components and the overall densitiy
+  MSE_obs <- calculate_mse(spline_densities, diff_spline_densities)
+  unique_indices <- get_index_of_first_unique_combi(covariates)
+  MSE_unique_cov <- calculate_mse(spline_densities, diff_spline_densities, indices = unique_indices)
 
-    theta_diff <- matrix(theta_diff, ncol = 1) # ??
+  theta_diff <- matrix(theta_diff, ncol = 1) # ??
 
-    # base component
-    coverage_base <- get_coverage(model, theta_diff, "base", density_params$base_range, density_params$base_range,
+  # base component
+  coverage_base <- get_coverage(model, theta_diff, "base", density_params$base_range, density_params$base_range,
+                                covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                knots_smooth_covariate)
+  # binary component
+  coverage_binary <- get_coverage(model, theta_diff, "binary", density_params$binary_range, density_params$base_range,
                                   covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
                                   knots_smooth_covariate)
-    # binary component
-    coverage_binary <- get_coverage(model, theta_diff, "binary", density_params$binary_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
-                                    knots_smooth_covariate)
-    # linear component
-    coverage_linear <- get_coverage(model, theta_diff, "linear", density_params$linear_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
-                                    knots_smooth_covariate)
-    # smooth component
-    coverage_smooth <- get_coverage(model, theta_diff, "smooth", density_params$smooth_range, density_params$base_range,
-                                    covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
-                                    knots_smooth_covariate)
-    # whole density
-    coverage_whole_density <- get_coverage_density(model, theta_diff, density_params$base_range, covariates,
-                                                   n_groups, sp, spline_densities, estimated_spline_densities,
-                                                   n_splines, X, density_data$quantiles, coverage_base,
-                                                   coverage_binary, coverage_linear,
-                                                   coverage_smooth)
+  # linear component
+  coverage_linear <- get_coverage(model, theta_diff, "linear", density_params$linear_range, density_params$base_range,
+                                  covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                  knots_smooth_covariate)
+  # smooth component
+  coverage_smooth <- get_coverage(model, theta_diff, "smooth", density_params$smooth_range, density_params$base_range,
+                                  covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
+                                  knots_smooth_covariate)
+  # whole density
+  coverage_whole_density <- get_coverage_density(model, theta_diff, density_params$base_range, covariates,
+                                                 n_groups, sp, spline_densities, estimated_spline_densities,
+                                                 n_splines, X, density_data$quantiles, coverage_base,
+                                                 coverage_binary, coverage_linear,
+                                                 coverage_smooth)
+
+  # I remove the matrices S and A form the coverage objects to save disk space
+  coverage_base <- coverage_base[!names(coverage_base) %in% c("S", "A")]
+  coverage_binary <- coverage_binary[!names(coverage_binary) %in% c("S", "A")]
+  coverage_linear <- coverage_linear[!names(coverage_linear) %in% c("S", "A")]
+  coverage_smooth <- coverage_smooth[!names(coverage_smooth) %in% c("S", "A")]
 
   print(i)
-  return(list(data = density_data$df, model = model, estimated_spline_densities = estimated_spline_densities,
-              MSE = MSE,  coverage_base = coverage_base, coverage_binary = coverage_binary,
+  return(list(MSE_obs = MSE_obs, MSE_unique_cov = MSE_unique_cov,
+              coverage_base = coverage_base, coverage_binary = coverage_binary,
               coverage_linear = coverage_linear, coverage_smooth = coverage_smooth,
               coverage_whole_density = coverage_whole_density))
+ }
+
+
+get_index_of_first_unique_combi <- function(covariates) {
+  dt <- as.data.table(covariates)
+  dt[, row_index := .I]
+  first_indices <- dt[, .SD[1], by = eval(names(dt)[1:(ncol(dt) - 1)])]$row_index
+  first_indices
 }
 
 
@@ -912,25 +928,31 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
 }
 
 
-calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL) {
+calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL, indices = NULL) {
   # right now only the mse for the whole density can be calculated not for each effect
   relMSE <- list()
   MSE <- list()
-  for (i in 1:length(spline_densities)) {
+  if(!is.null(indices)) {
+    obs_indices <- indices
+  } else {
+    obs_indices <- 1:length(spline_densities)
+  }
+  for (i in 1:length(obs_indices)) {
+    obs_index <- obs_indices[i]
     partial_mses <- list()
-    partial_mses["base"] <- diff_spline_densities[[i]]$norm_clr_density_base
-    partial_mses["binary"] <- diff_spline_densities[[i]]$norm_clr_density_binary
-    partial_mses["linear"] <- diff_spline_densities[[i]]$norm_clr_density_linear
-    partial_mses["smooth"] <- diff_spline_densities[[i]]$norm_clr_density_smooth
-    partial_mses["density"] <- diff_spline_densities[[i]]$norm_clr_density
+    partial_mses["base"] <- diff_spline_densities[[obs_index]]$norm_clr_density_base
+    partial_mses["binary"] <- diff_spline_densities[[obs_index]]$norm_clr_density_binary
+    partial_mses["linear"] <- diff_spline_densities[[obs_index]]$norm_clr_density_linear
+    partial_mses["smooth"] <- diff_spline_densities[[obs_index]]$norm_clr_density_smooth
+    partial_mses["density"] <- diff_spline_densities[[obs_index]]$norm_clr_density
     MSE[[i]] <- partial_mses
     if (is.null(norm_true)) {
       norm_true <- list()
-      norm_true["base"] <- spline_densities[[i]]$norm_clr_density_base
-      norm_true["binary"] <- spline_densities[[i]]$norm_clr_density_binary
-      norm_true["linear"] <- spline_densities[[i]]$norm_clr_density_linear
-      norm_true["smooth"] <- spline_densities[[i]]$norm_clr_density_smooth
-      norm_true["density"] <- spline_densities[[i]]$norm_clr_density
+      norm_true["base"] <- spline_densities[[obs_index]]$norm_clr_density_base
+      norm_true["binary"] <- spline_densities[[obs_index]]$norm_clr_density_binary
+      norm_true["linear"] <- spline_densities[[obs_index]]$norm_clr_density_linear
+      norm_true["smooth"] <- spline_densities[[obs_index]]$norm_clr_density_smooth
+      norm_true["density"] <- spline_densities[[obs_index]]$norm_clr_density
     }
     rel_mse_partial <- list()
     rel_mse_partial["base"] <- MSE[[i]]$base / norm_true$base
@@ -940,7 +962,23 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
     rel_mse_partial["density"] <- MSE[[i]]$density / norm_true$density
     relMSE[[i]] <- rel_mse_partial
   }
+
+  MSE <- append_mean_errors(MSE)
+  relMSE <- append_mean_errors(relMSE)
+
   list("relMSE" = relMSE, "MSE" = MSE)
+}
+
+
+append_mean_errors <- function(error) {
+  components <- c("base", "binary", "linear", "smooth", "density")
+  mean_errors <- list()
+  for (component in components) {
+    errors_single <- sapply(error, function(x) x[[component]])
+    mean_errors[paste0("mean_", component)] <- mean(errors_single)
+  }
+  error[["mean"]] <- mean_errors
+  error
 }
 
 
