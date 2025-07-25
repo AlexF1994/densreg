@@ -521,7 +521,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
   coverage_smooth <- coverage_smooth[!names(coverage_smooth) %in% c("S", "A")]
 
   print(i)
-  return(list(MSE_obs = MSE_obs, MSE_unique_cov = MSE_unique_cov,
+  return(list(MSE_obs = MSE_obs, MSE_unique_cov = MSE_unique_cov, theta_hat = theta_hat,
               coverage_base = coverage_base, coverage_binary = coverage_binary,
               coverage_linear = coverage_linear, coverage_smooth = coverage_smooth,
               coverage_whole_density = coverage_whole_density))
@@ -539,7 +539,7 @@ get_index_of_first_unique_combi <- function(covariates) {
 get_coverage <- function(model, theta_diff, effect_type, param_range, base_range,
                          covariates, n_groups, sp, spline_densities,
                          estimated_spline_densities, n_splines, X,
-                         quantiles, knots_smooth_covariate) {
+                         quantiles, knots_smooth_covariate, n_splines_cov = 8) {
   alpha <- 0.05
   # I don't need the range of X thetas since we only need the thetas corresponding to the y direction
   covariates_info <- get_unique_covariates_and_index_for_effect(covariates, effect_type) # TODO
@@ -557,18 +557,33 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   # without intercepts per covariate combination (here: 1)
   # I'm only allowed to include theta in y-direction
   if (is.null(sp)) {
-    Vc <- model$Vc[(n_groups + param_range[1]):(n_groups + param_range[2]),
-                   (n_groups + param_range[1]):(n_groups + param_range[2]), drop = FALSE]
-    Vc_inv <- try(solve(Vc), silent = TRUE)
+    Vc_all <- model$Vc[(n_groups + 1):ncol(model$Vc),
+                       (n_groups + 1):ncol(model$Vc), drop = FALSE]
+    Vc_all_inv <- try(solve(Vc_all), silent = TRUE)
+    #Vc <- model$Vc[(n_groups + param_range[1]):(n_groups + param_range[2]),
+     #              (n_groups + param_range[1]):(n_groups + param_range[2]), drop = FALSE]
+    if (!("try-error" %in% class(Vc_all_inv))) {
+      Vc_inv <- Vc_all_inv[(param_range[1]):(param_range[2]),
+                           (param_range[1]):(param_range[2]), drop = FALSE]
+    } else {
+      Vc_inv <-  NA
+    }
   } else {
+    Vc <- NA
     Vc_inv <-  NA
   }
 
-  Vp <- model$Vp[(n_groups + param_range[1]):(n_groups + param_range[2]),
-                 (n_groups + param_range[1]):(n_groups + param_range[2]), drop = FALSE]
-  Vp_inv <- try(solve(Vp), silent = TRUE)
-
-  success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
+  Vp_all <- model$Vp[(n_groups + 1):ncol(model$Vp),
+                     (n_groups + 1):ncol(model$Vp), drop = FALSE]
+  Vp_all_inv <- try(solve(Vp_all), silent = TRUE)
+  #Vp <- model$Vp[(n_groups + param_range[1]):(n_groups + param_range[2]),
+  #               (n_groups + param_range[1]):(n_groups + param_range[2]), drop = FALSE]
+  if (!("try-error" %in% class(Vp_all_inv))) {
+    Vp_inv <- Vp_all_inv[(param_range[1]):(param_range[2]),
+                         (param_range[1]):(param_range[2]), drop = FALSE]
+  } else {
+    Vp_inv <-  NA
+  }
 
   check_coverage_Vc <- rep(NA, nrow(basis_effect))
   chi_statistic_Vc <- rep(NA,  nrow(basis_effect))
@@ -586,14 +601,10 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
     # KIs and coverage
     A_for_effect_bases[[unique_covariates_for_effect[i]]] <- A_for_effect_base
 
-    if (!("try-error" %in% class(Vp_inv))) {
+    if (!any(is.na(Vp_inv)) & !("try-error" %in% class(Vp_inv))) {
       Vp_mixed <- mixed_basis %*% Vp_inv %*% t(mixed_basis)
-      if (nrow(mixed_basis) == ncol(mixed_basis)) {
-        Vp_mixed_inv <- solve(t(mixed_basis)) %*% Vp %*% solve(mixed_basis)
-      }
-      else {
-        Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
-      }
+      Vp_mixed_inv <- try(solve(Vp_mixed), silent = TRUE)
+
       if (!("try-error" %in% class(Vp_mixed_inv))) {
         chi_statistic_Vp[i] <- t(theta_diff_A) %*% Vp_mixed_inv %*% theta_diff_A
       }
@@ -611,12 +622,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
 
     if (!any(is.na(Vc_inv)) & !("try-error" %in% class(Vc_inv))) {
       Vc_mixed <- mixed_basis %*% Vc_inv %*% t(mixed_basis)
-      if (nrow(mixed_basis) == ncol(mixed_basis)) {
-        Vc_mixed_inv <- solve(t(mixed_basis)) %*% Vc %*% solve(mixed_basis)
-      }
-      else {
-        Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
-      }
+      Vc_mixed_inv <- try(solve(Vc_mixed), silent = TRUE)
       if (!("try-error" %in% class(Vc_mixed_inv))) {
         chi_statistic_Vc[i] <- t(theta_diff_A) %*% Vc_mixed_inv %*% theta_diff_A
       }
@@ -631,8 +637,6 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
       chi_statistic_Vc[i] <- NA
     }
 
-    success <- ifelse("try-error" %in% union(class(Vc_mixed_inv), class(Vp_mixed_inv)), FALSE, TRUE)
-
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
@@ -642,8 +646,47 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
 
   }
 
+  # simultaneous coverage
+  if (!any(is.na(Vp_inv))) {
+    V_for_covariate_p <- Vp_inv
+    V_for_covariate_inv_p <- try(solve(V_for_covariate_p), silent = TRUE)
+    if (!("try-error" %in% class(V_for_covariate_inv_p))) {
+      chi_statistic_Vp_sim <- t(theta_diff[param_range[1]:param_range[2]]) %*% V_for_covariate_inv_p %*% theta_diff[param_range[1]:param_range[2]]
+    } else {
+      V_for_covariate_inv_p <- NA
+      chi_statistic_Vp_sim <- NA
+    }
+  }
 
-  return(list(ki_info = ki_infos, check_coverage_Vc = check_coverage_Vc, check_coverage_Vp = check_coverage_Vp, S = S, A = A_for_effect_bases))
+  if (!any(is.na(Vc))) {
+      if (!any(is.na(Vc_inv))) {
+        V_for_covariate_c <- Vc_inv
+        V_for_covariate_inv_c <- try(solve(V_for_covariate_c), silent = TRUE)
+        if (!("try-error" %in% class(V_for_covariate_inv_c))) {
+          chi_statistic_Vc_sim <- t(theta_diff[param_range[1]:param_range[2]]) %*% V_for_covariate_inv_c %*% theta_diff[param_range[1]:param_range[2]]
+        } else {
+          V_for_covariate_inv_c <- NA
+          chi_statistic_Vp_sim_c <- NA
+        }
+      }
+  } else {
+    V_for_covariate_inv_c <- NA
+    chi_statistic_Vc_sim <- NA
+  }
+
+  check_coverage_Vc_sim <- as.numeric(chi_statistic_Vc_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
+  check_coverage_Vp_sim <- as.numeric(chi_statistic_Vp_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
+
+  return(list(ki_info = ki_infos,
+              check_coverage_Vc = check_coverage_Vc,
+              check_coverage_Vc_sim = check_coverage_Vc_sim,
+              check_coverage_Vp = check_coverage_Vp,
+              check_coverage_Vp_sim = check_coverage_Vp_sim,
+              chi_statistic_Vp = chi_statistic_Vp,
+              chi_statistic_Vc = chi_statistic_Vc,
+              chi_statistic_Vc_sim =  chi_statistic_Vc_sim,
+              chi_statistic_Vp_sim = chi_statistic_Vp_sim,
+              S = S, A = A_for_effect_bases))
 }
 
 
@@ -682,7 +725,7 @@ get_coverage_density <- function(model, theta_diff, base_range,
                          covariates, n_groups, sp, spline_densities,
                          estimated_spline_densities, n_splines, X,
                          quantiles, coverage_base, coverage_binary, coverage_linear,
-                         coverage_smooth) {
+                         coverage_smooth, n_splines_cov = 8) {
   # TODO: I only need to loop over the covaraites every n_bin rows, as these are
   # jsut duplicated for each bin midpoint
   alpha <- 0.05
@@ -697,13 +740,12 @@ get_coverage_density <- function(model, theta_diff, base_range,
     Vc <- model$Vc[(n_groups+1):nrow(model$Vc), (n_groups+1):nrow(model$Vc), drop = FALSE]
     Vc_inv <- try(solve(Vc), silent = TRUE)
   } else {
+    Vc <- NA
     Vc_inv <-  NA
   }
 
   Vp <- model$Vp[(n_groups+1):nrow(model$Vp), (n_groups+1):nrow(model$Vp), drop = FALSE]
   Vp_inv <- try(solve(Vp), silent = TRUE)
-
-  success <- ifelse("try-error" %in% union(class(Vc_inv), class(Vp_inv)), FALSE, TRUE)
 
   for (i in 1:nrow(covariates)){
     covariate_combination <- covariates[i,]
@@ -768,8 +810,6 @@ get_coverage_density <- function(model, theta_diff, base_range,
       chi_statistic_Vc[i] <- NA
     }
 
-    success <- ifelse("try-error" %in% union(class(Vc_mixed_inv), class(Vp_mixed_inv)), FALSE, TRUE)
-
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
@@ -778,7 +818,27 @@ get_coverage_density <- function(model, theta_diff, base_range,
                            "all", quantiles)
 
   }
-  return(list(ki_info = ki_infos, check_coverage_Vc = check_coverage_Vc, check_coverage_Vp = check_coverage_Vp))
+  # simultaneous coverage
+  chi_statistic_Vp_sim <- t(theta_diff) %*% Vp %*% theta_diff
+
+  if (!any(is.na(Vc))) {
+    chi_statistic_Vc_sim <- t(theta_diff) %*% Vc %*% theta_diff
+  } else {
+    chi_statistic_Vc_sim <- NA
+  }
+
+  check_coverage_Vc_sim <- as.numeric(chi_statistic_Vc_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
+  check_coverage_Vp_sim <- as.numeric(chi_statistic_Vp_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
+
+  return(list(ki_info = ki_infos,
+              check_coverage_Vc = check_coverage_Vc,
+              check_coverage_Vc_sim = check_coverage_Vc_sim,
+              check_coverage_Vp = check_coverage_Vp,
+              check_coverage_Vp_sim = check_coverage_Vp_sim,
+              chi_statistic_Vp = chi_statistic_Vp,
+              chi_statistic_Vc = chi_statistic_Vc,
+              chi_statistic_Vc_sim =  chi_statistic_Vc_sim,
+              chi_statistic_Vp_sim = chi_statistic_Vp_sim))
 }
 
 
@@ -932,6 +992,7 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
   # right now only the mse for the whole density can be calculated not for each effect
   relMSE <- list()
   MSE <- list()
+  norm_true_conserved <- list()
   if(!is.null(indices)) {
     obs_indices <- indices
   } else {
@@ -961,21 +1022,35 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
     rel_mse_partial["smooth"] <- MSE[[i]]$smooth / norm_true$smooth
     rel_mse_partial["density"] <- MSE[[i]]$density / norm_true$density
     relMSE[[i]] <- rel_mse_partial
+    norm_true_conserved[[i]] <- norm_true
   }
 
-  MSE <- append_mean_errors(MSE)
-  relMSE <- append_mean_errors(relMSE)
+  MSE <- append_mean_mse(MSE)
+  relMSE <- append_mean_rel_mse(relMSE, norm_true_conserved)
 
   list("relMSE" = relMSE, "MSE" = MSE)
 }
 
 
-append_mean_errors <- function(error) {
+append_mean_mse <- function(error) {
   components <- c("base", "binary", "linear", "smooth", "density")
   mean_errors <- list()
   for (component in components) {
     errors_single <- sapply(error, function(x) x[[component]])
     mean_errors[paste0("mean_", component)] <- mean(errors_single)
+  }
+  error[["mean"]] <- mean_errors
+  error
+}
+
+
+append_mean_rel_mse <- function(error, norm_true) {
+  components <- c("base", "binary", "linear", "smooth", "density")
+  mean_errors <- list()
+  for (component in components) {
+    errors_single <- sapply(error, function(x) x[[component]])
+    norms_single  <- sapply(norm_true, function(x) x[[component]])
+    mean_errors[paste0("mean_", component)] <- sum(errors_single) / sum(norms_single)
   }
   error[["mean"]] <- mean_errors
   error
