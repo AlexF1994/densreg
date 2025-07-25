@@ -656,6 +656,9 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
       V_for_covariate_inv_p <- NA
       chi_statistic_Vp_sim <- NA
     }
+  } else {
+    V_for_covariate_inv_p <- NA
+    chi_statistic_Vp_sim <- NA
   }
 
   if (!any(is.na(Vc))) {
