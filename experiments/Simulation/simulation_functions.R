@@ -590,7 +590,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   chi_statistic_Vp <- rep(NA, nrow(basis_effect))
   check_coverage_Vp <- rep(NA, nrow(basis_effect))
   A_for_effect_bases <- hashmap()
-  ki_infos <- list()
+  #ki_infos <- list()
 
   for (i in 1:nrow(basis_effect)) {
     relevant_index <- covariate_index_mapping[i]
@@ -640,9 +640,10 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
-    ki_infos[[i]] <- get_kis(spline_densities[[relevant_index]], estimated_spline_densities[[relevant_index]],
-                           basis_functional_intercept,  Vc_mixed, Vp_mixed,
-                           effect_type, quantiles)
+    # save disk space
+    #ki_infos[[i]] <- get_kis(spline_densities[[relevant_index]], estimated_spline_densities[[relevant_index]],
+    #                       basis_functional_intercept,  Vc_mixed, Vp_mixed,
+    #                       effect_type, quantiles)
 
   }
 
@@ -680,7 +681,7 @@ get_coverage <- function(model, theta_diff, effect_type, param_range, base_range
   check_coverage_Vc_sim <- as.numeric(chi_statistic_Vc_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
   check_coverage_Vp_sim <- as.numeric(chi_statistic_Vp_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
 
-  return(list(ki_info = ki_infos,
+  return(list(#ki_info = ki_infos,
               check_coverage_Vc = check_coverage_Vc,
               check_coverage_Vc_sim = check_coverage_Vc_sim,
               check_coverage_Vp = check_coverage_Vp,
@@ -736,7 +737,7 @@ get_coverage_density <- function(model, theta_diff, base_range,
   chi_statistic_Vc <- rep(NA, nrow(covariates))
   chi_statistic_Vp <- rep(NA, nrow(covariates))
   check_coverage_Vp <- rep(NA, nrow(covariates))
-  ki_infos <- list()
+  # ki_infos <- list()
   basis_functional_intercept <- X[1, base_range[1]:base_range[2]]
 
   if (is.null(sp)) {
@@ -816,9 +817,9 @@ get_coverage_density <- function(model, theta_diff, base_range,
     check_coverage_Vc[i] <- as.numeric(chi_statistic_Vc[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     check_coverage_Vp[i] <- as.numeric(chi_statistic_Vp[[i]]) <= qchisq(1 - alpha, df = n_splines - 1)
     # calcualte KIs
-    ki_infos[[i]] <- get_kis(spline_densities[[i]], estimated_spline_densities[[i]],
-                           basis_functional_intercept,  Vc_mixed, Vp_mixed,
-                           "all", quantiles)
+    #ki_infos[[i]] <- get_kis(spline_densities[[i]], estimated_spline_densities[[i]],
+    #                       basis_functional_intercept,  Vc_mixed, Vp_mixed,
+    #                       "all", quantiles)
 
   }
   # simultaneous coverage
@@ -833,7 +834,7 @@ get_coverage_density <- function(model, theta_diff, base_range,
   check_coverage_Vc_sim <- as.numeric(chi_statistic_Vc_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
   check_coverage_Vp_sim <- as.numeric(chi_statistic_Vp_sim) <= qchisq(1 - alpha, df = n_splines * n_splines_cov - 2)
 
-  return(list(ki_info = ki_infos,
+  return(list(#ki_info = ki_infos,
               check_coverage_Vc = check_coverage_Vc,
               check_coverage_Vc_sim = check_coverage_Vc_sim,
               check_coverage_Vp = check_coverage_Vp,
@@ -1031,7 +1032,8 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
   MSE <- append_mean_mse(MSE)
   relMSE <- append_mean_rel_mse(relMSE, norm_true_conserved)
 
-  list("relMSE" = relMSE, "MSE" = MSE)
+  # I just save the mean to save disk space
+  list("relMSE" = relMSE$mean, "MSE" = MSE$mean)
 }
 
 
