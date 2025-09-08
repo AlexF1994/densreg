@@ -401,6 +401,8 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
   linear_range <- approx_results$linear_range
   smooth_range <- approx_results$smooth_range
   knots_smooth_covariate = approx_results$knots_smooth_covariate
+  covariates_dt <- data.table(covariates)
+  unique_covariates <- covariates_dt[,.N, by = names(covariates)]
   density_params <- list(theta = theta,
                          knots = knots,
                          knots_smooth_covariate = knots_smooth_covariate,
@@ -412,7 +414,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
                          density_name = "spline")
 
   spline_densities <- get_densities_with_covariates(density_params = density_params,
-                                             covariates = covariates,
+                                             covariates = unique_covariates,
                                              smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                              calculate_norm = TRUE
                                              )
@@ -425,7 +427,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
 
   # results of "multinomial" converge to the ones of "density" for step_size -> 0
   density_data <- get_density_data_with_covariates(spline_densities, unpenalized, step_size,
-                                   covariates = covariates, sample_mode = "bin",
+                                   covariates = unique_covariates, sample_mode = "bin",
                                    knots = knots,
                                    order = ord)
   # Here, we need one intercept for each unique covariate combination
@@ -464,7 +466,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
                                    smooth_range = smooth_range,
                                    density_name = "spline")
   estimated_spline_densities <- get_densities_with_covariates(density_params = estimated_density_params,
-                                                              covariates = covariates,
+                                                              covariates = unique_covariates,
                                                               smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                                               calculate_norm = TRUE
   )
@@ -479,15 +481,16 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
                               smooth_range = smooth_range,
                               density_name = "spline")
   diff_spline_densities <- get_densities_with_covariates(density_params = diff_density_params,
-                                                         covariates = covariates,
+                                                         covariates = unique_covariates,
                                                          smooth_covariate_design_matrix = smooth_covariate_design_matrix,
                                                          calculate_norm = TRUE
   )
   # here I have continue and calculate the Overall MSE and then break down, also calc mse for each component density
   # the coverage rates for all components and the overall densitiy
-  MSE_obs <- calculate_mse(spline_densities, diff_spline_densities)
-  unique_indices <- get_index_of_first_unique_combi(covariates)
-  MSE_unique_cov <- calculate_mse(spline_densities, diff_spline_densities, indices = unique_indices)
+  # q: I want to convert the result of the next line to a vector, how do I do that
+  weights_mse_obs <- unique_covariates[["N"]]
+  MSE_obs <- calculate_mse(spline_densities, diff_spline_densities, weights = weights_mse_obs)
+  MSE_unique_cov <- calculate_mse(spline_densities, diff_spline_densities)
 
   theta_diff <- matrix(theta_diff, ncol = 1) # ??
 
@@ -508,7 +511,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
                                   covariates, n_groups, sp, spline_densities, estimated_spline_densities, n_splines, X, density_data$quantiles,
                                   knots_smooth_covariate)
   # whole density
-  coverage_whole_density <- get_coverage_density(model, theta_diff, density_params$base_range, covariates,
+  coverage_whole_density <- get_coverage_density(model, theta_diff, density_params$base_range, unique_covariates,
                                                  n_groups, sp, spline_densities, estimated_spline_densities,
                                                  n_splines, X, density_data$quantiles, coverage_base,
                                                  coverage_binary, coverage_linear,
@@ -960,29 +963,28 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
                                              step_size, sample_mode,
                                              covariates,
                                              order) {
+  # I assume covariates are unique combis
   grid_hist <- seq(from = 0, to = 1, by = step_size)
   mids_dens <- grid_hist[1:(length(grid_hist) - 1)] + step_size / 2
   # get data frame with unique cov combis and number of replicates.
-  covariates <- data.table(covariates)
-  unique_covariates <- covariates[,.N, by = names(covariates)]
-  n_unique_cov_combis <- nrow(unique_covariates)
-  dta_dens <- data.frame(matrix(ncol = 4 + ncol(unique_covariates[,.SD, .SDcols = !c("N")]),
+  n_unique_cov_combis <- nrow(covariates)
+  dta_dens <- data.frame(matrix(ncol = 4 + ncol(covariates[,.SD, .SDcols = !c("N")]),
                                 nrow = 0))
-  colnames(dta_dens) <- c("counts", "y", colnames(unique_covariates[,.SD, .SDcols = !c("N")]), "Delta", "group_id")
+  colnames(dta_dens) <- c("counts", "y", colnames(covariates[,.SD, .SDcols = !c("N")]), "Delta", "group_id")
 
   for (i in 1:n_unique_cov_combis) {
-    n_samples <- unique_covariates[i, N]
+    n_samples <- covariates[i, N]
     density <- densities[[i]]
     counts_dens <- sample_from_density(densities = density,
                                        n_samples = n_samples,
                                        bins = grid_hist,
                                        sample_mode = sample_mode,
                                        quantiles = mids_dens)
-    covariates_for_observation <-  unique_covariates[replicate(length(mids_dens), i),.SD, .SDcols = !c("N")]
+    covariates_for_observation <-  covariates[replicate(length(mids_dens), i),.SD, .SDcols = !c("N")]
     # here I assume again that Delta is the same for each density component
     Delta <- rep(step_size, length(mids_dens))
     dta_dens_obs <- as.data.frame(cbind(counts_dens, mids_dens, covariates_for_observation, Delta, replicate(length(mids_dens), i)))
-    colnames(dta_dens_obs) <- c("counts", "y", colnames(unique_covariates[,.SD, .SDcols = !c("N")]), "Delta", "group_id")
+    colnames(dta_dens_obs) <- c("counts", "y", colnames(covariates[,.SD, .SDcols = !c("N")]), "Delta", "group_id")
     dta_dens <- rbind(dta_dens, dta_dens_obs)
 
   }
@@ -992,7 +994,8 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
 }
 
 
-calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL, indices = NULL) {
+µcalculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL,
+                          indices = NULL, weights = NULL) {
   # right now only the mse for the whole density can be calculated not for each effect
   relMSE <- list()
   MSE <- list()
@@ -1014,7 +1017,11 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
     if (is.null(norm_true)) {
       norm_true <- list()
       norm_true["base"] <- spline_densities[[obs_index]]$norm_clr_density_base
+      if (spline_densities[[obs_index]]$norm_clr_density_binary > 0) {
       norm_true["binary"] <- spline_densities[[obs_index]]$norm_clr_density_binary
+      } else {
+        norm_true["binary"] <- 1
+      }
       norm_true["linear"] <- spline_densities[[obs_index]]$norm_clr_density_linear
       norm_true["smooth"] <- spline_densities[[obs_index]]$norm_clr_density_smooth
       norm_true["density"] <- spline_densities[[obs_index]]$norm_clr_density
@@ -1029,33 +1036,40 @@ calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = N
     norm_true_conserved[[i]] <- norm_true
   }
 
-  MSE <- append_mean_mse(MSE)
-  relMSE <- append_mean_rel_mse(relMSE, norm_true_conserved)
+  if (is.null(weights)) {
+    weights <- rep(1, length(spline_densities))
+  }
+  MSE <- append_mean_mse(MSE, weights)
+  relMSE <- append_mean_rel_mse(relMSE, norm_true_conserved, weights)
 
   # I just save the mean to save disk space
   list("relMSE" = relMSE$mean, "MSE" = MSE$mean)
 }
 
 
-append_mean_mse <- function(error) {
+append_mean_mse <- function(error, weights = NULL) {
   components <- c("base", "binary", "linear", "smooth", "density")
   mean_errors <- list()
+  n_obs <- sum(weights)
   for (component in components) {
     errors_single <- sapply(error, function(x) x[[component]])
-    mean_errors[paste0("mean_", component)] <- mean(errors_single)
+    errors_single_weighted <- errors_single * weights
+    mean_errors[paste0("mean_", component)] <- (1/n_obs) * sum(errors_single_weighted)
   }
   error[["mean"]] <- mean_errors
   error
 }
 
 
-append_mean_rel_mse <- function(error, norm_true) {
+append_mean_rel_mse <- function(error, norm_true, weights = NULL) {
   components <- c("base", "binary", "linear", "smooth", "density")
   mean_errors <- list()
   for (component in components) {
     errors_single <- sapply(error, function(x) x[[component]])
+    errors_single_weighted <- errors_single * weights
     norms_single  <- sapply(norm_true, function(x) x[[component]])
-    mean_errors[paste0("mean_", component)] <- sum(errors_single) / sum(norms_single)
+    norms_single_weighted <- norms_single * weights
+    mean_errors[paste0("mean_", component)] <- sum(errors_single_weighted) / sum(norms_single_weighted)
   }
   error[["mean"]] <- mean_errors
   error

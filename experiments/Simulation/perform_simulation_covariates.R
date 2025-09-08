@@ -5,6 +5,7 @@ source("./densities.R")
 source("../../R/mixed_density_smooth.R")
 source("./simulation_functions.R")
 library(mgcv)
+library(parallel)
 
 set.seed(25)
 alpha <- 0.05 # 95% confidence
@@ -27,7 +28,7 @@ scenarios <- list(
                         n_knots = 10)),
   seed = 1542,
   n_obs = c(5000, 10000, 50000, 100000),
-  step_size = c(0.05, 0.001, 0.0005)
+  step_size = c(0.01, 0.001, 0.0005)
 )
 
 scenario_dimensions <- c(sapply(list(scenarios$n_obs, scenarios$step_size, covariance_types), length), 5) #  5 for covariable types
@@ -35,7 +36,51 @@ scenario_dimensions <- c(sapply(list(scenarios$n_obs, scenarios$step_size, covar
 scipen <- getOption("scipen") # save current scipen setting for resetting it later
 options(scipen = 999) # preventing scientific notation (in particular when saving objects) for large sample size
 
-simulate_with_covariates <- function(){
+index_n_obs_step_size <- cbind(rep(seq_along(scenarios$n_obs), each = length(scenarios$step_size)),
+                               rep(seq_along(scenarios$step_size), length(scenarios$n_obs)))
+
+simulate_with_covariates <- function(n_scenario, which, parallel = FALSE) {
+  if (parallel) {
+    stop("Currently, only parallel execution is supported. Please set 'parallel = TRUE'.")
+  # STEP 1: SET UP PARALLEL CLUSTER
+  # Detect available cores and leave one free for system processes
+  n_cores <- max(1, detectCores() - 1)
+  cat("Using", n_cores, "cores for parallel processing\n")
+
+  # Create cluster object
+  cl <- makeCluster(n_cores)
+
+  # STEP 2: PREPARE CLUSTER WITH DEPENDENCIES
+  # Export necessary functions and variables to all worker processes
+  clusterExport(cl, c(
+    # Variables
+    "alpha", "scenarios",
+    # Functions from your source files (add any others you need)
+    "run_simulation_with_covariates", "sample_covariates",
+    "get_knots", "get_approx_results_with_covariates",
+    "sum_constrained_spline_design_matrix", "get_scenario_name"
+  ), envir = environment())
+
+  # Load required libraries on each worker
+  clusterEvalQ(cl, {
+    library(data.table)
+    library(mgcv)
+    library("r2r")
+    library("purrr")
+    library("truncnorm")
+    library("rlist")
+  })
+
+  # Source required files on each worker
+  clusterEvalQ(cl, {
+    source("./densities.R")
+    source("../../R/mixed_density_smooth.R")
+    source("./simulation_functions.R")
+  })
+  } else {
+    # If not running in parallel, just print a message
+    cat("Running simulations sequentially (not in parallel)\n")
+  }
 
   for (penalized in c(FALSE, TRUE)) {
     set.seed(scenarios$seed)
@@ -50,7 +95,9 @@ simulate_with_covariates <- function(){
 
     base_path <- paste0("./covariates/", identifier)
 
-    for (density_params in scenarios$densities) {
+    for (n_s in n_scenario) {
+      set.seed(scenarios$seed)
+      density_params <- scenarios$densities[[n_s]]
       print(density_params$density_name)
       scenario_name <- get_scenario_name(density_params)
       scenario_path <- paste0(base_path, "/", scenario_name)
@@ -82,18 +129,55 @@ simulate_with_covariates <- function(){
                                                                                               "linear_component",
                                                                                               "smooth_component",
                                                                                               "complete_density"))))
-
+      if (parallel) {
+        # STEP 3: EXPORT SCENARIO-SPECIFIC VARIABLES TO CLUSTER
+        clusterExport(cl, c("sp", "approx_results", "density_params"), envir = environment())
+      }
+      # STEP 3: EXPORT SCENARIO-SPECIFIC VARIABLES TO CLUSTER
       ##### Perform simulation
       count <- 1
-      for(i in seq_along(scenarios$n_obs)) {
+      for (k in which) {
+        set.seed(scenarios$seed)
+        i <- index_n_obs_step_size[k, 1]
         X <- sample_covariates(scenarios$n_obs[i], range_smooth_covariates, range_linear_covariates)
         smooth_covariate_design_matrix <- sum_constrained_spline_design_matrix(X$smooth_variable, knots_smooth_covariate)
-        for (j in seq_along(scenarios$step_size)) {
-          print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", scenarios$n_obs[i], "; Count: ", count))
-          sim_result <- lapply(1:n_simulation_runs, run_simulation_with_covariates, sample_type = "bin",
-                               approx_results = approx_results, n_knots = density_params$n_knots, n_obs = scenarios$n_obs[i],
-                               step_size = scenarios$step_size[j], alpha = alpha, sp = sp, bs = "md", covariates = X,
-                               smooth_covariate_design_matrix = smooth_covariate_design_matrix)
+        if (parallel) {
+          # STEP 4: EXPORT LOOP-SPECIFIC VARIABLES TO CLUSTER
+          clusterExport(cl, c("X", "smooth_covariate_design_matrix"), envir = environment())
+        }
+        #for (j in seq_along(scenarios$step_size)) {
+        j <- index_n_obs_step_size[k, 2]
+          if (parallel) {
+            # STEP 5: REPLACE lapply() WITH parLapply() FOR PARALLEL EXECUTION
+            # This is the main parallelization - instead of running 200 simulations sequentially,
+            # we distribute them across multiple CPU cores
+            sim_result <- parLapply(cl, 1:n_simulation_runs, function(run_index) {
+              # Set different seed for each simulation run to ensure reproducibility
+              # but still have variation between runs
+              set.seed(scenarios$seed + run_index)
+
+              run_simulation_with_covariates(
+                run_index,
+                sample_type = "bin",
+                approx_results = approx_results,
+                n_knots = density_params$n_knots,
+                n_obs = scenarios$n_obs[i],
+                step_size = scenarios$step_size[j],
+                alpha = alpha,
+                sp = sp,
+                bs = "md",
+                covariates = X,
+                smooth_covariate_design_matrix = smooth_covariate_design_matrix
+              )
+            })
+          } else {
+            print(paste(scenario_path, "; G: ", n_bins[j], "; N: ", scenarios$n_obs[i], "; Count: ", count))
+            # If not running in parallel, use regular lapply
+            sim_result <- lapply(1:n_simulation_runs, run_simulation_with_covariates, sample_type = "bin",
+                                 approx_results = approx_results, n_knots = density_params$n_knots, n_obs = scenarios$n_obs[i],
+                                 step_size = scenarios$step_size[j], alpha = alpha, sp = sp, bs = "md", covariates = X,
+                                 smooth_covariate_design_matrix = smooth_covariate_design_matrix)
+          }
           saveRDS(sim_result, paste0(scenario_path, "/n_runs", n_simulation_runs, "_nobs",
                                      scenarios$n_obs[i], "_nbins", n_bins[j], ".rds"))
 
@@ -126,10 +210,15 @@ simulate_with_covariates <- function(){
           coverage_rate[[scenario_name]][i, j, 2, 5] <- sum(sapply(1:n_simulation_runs,
                                                                 function(l) sim_result[[l]]$coverage_whole_density$check_coverage_Vp)) / n_simulation_runs
           count <- count + 1
-        }
+        #}
       }
       saveRDS(coverage_rate[[scenario_name]], paste0(save_path, "/coverage_rates.rds"))
     }
+  }
+  if (parallel) {
+    # STEP 6: CLEAN UP - ALWAYS STOP THE CLUSTER WHEN DONE
+    stopCluster(cl)
+    cat("Parallel cluster stopped\n")
   }
 }
 
