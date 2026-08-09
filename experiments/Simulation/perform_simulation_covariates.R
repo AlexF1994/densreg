@@ -14,21 +14,17 @@ covariance_types <- c("Vc", "Vp")
 
 spline_order <- 4
 scenarios <- list(
-  densities = list(list(density_name = "beta", a = 2, b = 2, n_knots = 10),
-                   list(density_name = "beta", a = 2, b = 3, n_knots = 10),
-                   list(density_name = "beta", a = 3, b = 3, n_knots = 10),
-                   list(density_name = "beta", a = 5, b = 5, n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 0, sd = 1,
+  densities = list(list(density_name = "truncated_normal", mean = 0.1, sd = 1,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 1, sd = 1,
+                   list(density_name = "truncated_normal", mean = 0.1, sd = 1,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 1, sd = 2,
+                   list(density_name = "truncated_normal", mean = 0.5, sd = 2,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 2, sd = 2,
+                   list(density_name = "truncated_normal", mean = 0.5, sd = 2,
                         n_knots = 10)),
   seed = 1542,
-  n_obs = c(5000, 10000, 50000, 100000),
-  step_size = c(0.01, 0.001, 0.0005)
+  n_obs = c(50000, 150000, 500000, 1000000),
+  step_size = c(0.02, 0.01, 0.005)
 )
 
 scenario_dimensions <- c(sapply(list(scenarios$n_obs, scenarios$step_size, covariance_types), length), 5) #  5 for covariable types
@@ -107,15 +103,17 @@ simulate_with_covariates <- function(n_scenario, which, parallel = FALSE) {
 
       n_bins <- sapply(scenarios$step_size, function(s) length(seq(0, 1, by = s))) - 1
       n_obs_approx <- 2000
-      range_smooth_covariates <- c(-5, 5)
-      range_linear_covariates <- c(1, 5)
+      range_smooth_covariates <- c(1, 5) # avoid 0 as it leads to multicollinearity with base component
+      range_linear_covariates <- c(1, 5) # avoid zero as otherwise constant density is introduced
       approx_design_matrix <- sample_covariates(n_obs_approx, range_smooth_covariates, range_linear_covariates)
       # note that you have to change the range if you change the method for sampling smooth covariates
+      grid_hist <- seq(from = 0, to = 1, by = 0.01)
       knots_smooth_covariate <- get_knots(n_splines = 8, ord = 4, range_ = range_smooth_covariates)
+      quantiles_density <- grid_hist[1:(length(grid_hist) - 1)] + 0.01 / 2
       approx_results <- get_approx_results_with_covariates(density_params = density_params,
                                                            covariates =  approx_design_matrix,
                                                            knots_smooth_covariate = knots_smooth_covariate,
-                                                           sp = sp)
+                                                           sp = sp, quantiles_density = quantiles_density)
       saveRDS(approx_results$theta, paste0(save_path, "/theta.rds"))
 
       coverage_rate <- list()

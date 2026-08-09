@@ -193,7 +193,7 @@ get_approx_results_with_covariates <-  function(density_params,
   xt_c <- list(values_discrete = FALSE, domain_continuous = c(0, 1))
   print("approximating")
   # maybe we can delete the penalization in x direction here as well
-  model <- gam(y_clr ~ -1
+  model <- gam(y_clr ~ 1
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
                     np = FALSE, k = n_splines, sp = sp, xt = list(xt_c))
                + ti(quantiles, bs = "d", m = list(c(2, 2)), mc = FALSE,
@@ -207,12 +207,12 @@ get_approx_results_with_covariates <-  function(density_params,
                method = "REML")
   print("approximating done")
 
-  list(theta = model$coefficients,
+  list(theta = model$coefficients[2:length(model$coefficients)],
        knots = knots_density_,
        base_range = c(1, 9),
        binary_range = c(10, 18),
        linear_range = c(19, 27),
-       smooth_range = c(28, length(model$coefficients)),
+       smooth_range = c(28, length(model$coefficients) - 1),
        knots_smooth_covariate = knots_smooth_covariate)
 }
 
@@ -458,7 +458,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
 
   estimated_density_params <- list(theta = theta_hat,
                                    knots = knots,
-                                   knots_smooth_covariate = knots_smooth_covariate_estimate,
+                                   knots_smooth_covariate = knots_smooth_covariate,
                                    order = ord,
                                    base_range = base_range,
                                    binary_range = binary_range,
@@ -473,7 +473,7 @@ run_simulation <- function(i, sample_type = c("bin", "value"), approx_results,
 
   diff_density_params <- list(theta = theta_diff,
                               knots = knots,
-                              knots_smooth_covariate = knots_smooth_covariate_estimate,
+                              knots_smooth_covariate = knots_smooth_covariate,
                               order = ord,
                               base_range = base_range,
                               binary_range = binary_range,
@@ -994,7 +994,7 @@ get_density_data_with_covariates <- function(densities, unpenalized, knots,
 }
 
 
-µcalculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL,
+calculate_mse <- function(spline_densities, diff_spline_densities, norm_true = NULL,
                           indices = NULL, weights = NULL) {
   # right now only the mse for the whole density can be calculated not for each effect
   relMSE <- list()
@@ -1120,7 +1120,9 @@ sample_covariates <- function(n_obs, range_smooth_covariates, range_linear_covar
   linear_values <- seq(from=range_linear_covariates[1], to=range_linear_covariates[2],
                        by=0.5)
   linear <- sample(linear_values, n_obs, replace = TRUE)
-  smooth <- rdunif(n_obs, range_smooth_covariates[1], range_smooth_covariates[2])
+  smooth_values <- seq(from=range_smooth_covariates[1], to=range_smooth_covariates[2],
+                       by=0.5)
+  smooth <- sample(smooth_values, n_obs, replace = TRUE)
   covariates <- data.frame(
     binary_variable = binary,
     linear_variable = linear,

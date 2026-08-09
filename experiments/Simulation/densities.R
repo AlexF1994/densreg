@@ -19,8 +19,8 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
   }
 
   if (density_params$density_name == "beta") {
-    # take absolute value to avoid negative parmater values for a and b
-    a <- ifelse(param_scale, (1 + abs(param_scale)) * density_params$a, density_params$a)
+    # take absolute value to avoid negative paramater values for a and b
+    a <- ifelse(param_scale, (abs(param_scale)) + density_params$a, density_params$a)
     b <- density_params$b
     density_function <- partial(beta_density, a = a,
                                 b = b)
@@ -30,7 +30,7 @@ get_densities <- function(density_params, calculate_norm=FALSE, param_scale=0,
 
   if (density_params$density_name == "truncated_normal") {
     mean <- ifelse(param_scale, param_scale * density_params$mean, density_params$mean)
-    sd <- ifelse(param_scale, abs(param_scale) * density_params$sd + 1, density_params$sd)
+    sd <- density_params$sd
     density_function <- partial(truncated_normal_density,
                                 mean = mean,
                                 sd = sd)
@@ -151,7 +151,8 @@ get_densities_with_covariates_single <- function(observation_index, density_para
   base_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "base", Z_cont = Z_cont)
   # binary density
   if (covariates$binary_variable[observation_index] == 1) {
-    binary_density_component <- get_densities(density_params, calculate_norm = calculate_norm, component = "binary", Z_cont = Z_cont)
+    density_params_binary <- get_binary_density_params(density_params)
+    binary_density_component <- get_densities(density_params_binary, calculate_norm = calculate_norm, component = "binary", Z_cont = Z_cont)
   }
 
   else {
@@ -160,7 +161,8 @@ get_densities_with_covariates_single <- function(observation_index, density_para
 
   # linear density
   linear_variable <- covariates$linear_variable[observation_index]
-  density_part <- get_densities(density_params, calculate_norm = FALSE, component = "linear", Z_cont = Z_cont)
+  density_params_linear <- get_linear_density_params(density_params)
+  density_part <- get_densities(density_params_linear, calculate_norm = FALSE, component = "linear", Z_cont = Z_cont)
   linear_density_component <- list(density_function = partial(pertubated_density, density_function = density_part$density_function,
                                                               pertubator = linear_variable),
                                    clr_density_function =  partial(scaled_clr_density, clr_density_function = density_part$clr_density_function,
@@ -219,6 +221,29 @@ get_densities_with_covariates_single <- function(observation_index, density_para
 
 }
 
+
+get_binary_density_params <- function(density_params) {
+  density_params_binary <- density_params
+  if (density_params$density_name == "beta") {
+    density_params_binary$b <- density_params$b + 1
+  }
+  else {
+    density_params_binary$sd <- density_params$sd - 0.5
+  }
+  return(density_params_binary)
+}
+
+
+get_linear_density_params <- function(density_params) {
+  density_params_linear <- density_params
+  if (density_params$density_name == "beta") {
+    density_params_linear$b <- density_params$b - 0.5
+  }
+  else {
+    density_params_linear$sd <- density_params$sd + 0.5
+  }
+  return(density_params_linear)
+}
 
 # true density to interpolate (we use a beta distribution)
 beta_density <- function(quantiles, a, b) {
