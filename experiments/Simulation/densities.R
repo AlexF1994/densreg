@@ -228,7 +228,7 @@ get_binary_density_params <- function(density_params) {
     density_params_binary$b <- density_params$b + 1
   }
   else {
-    density_params_binary$sd <- density_params$sd - 0.5
+    density_params_binary$sd <- density_params$sd - 0.25
   }
   return(density_params_binary)
 }
@@ -240,7 +240,7 @@ get_linear_density_params <- function(density_params) {
     density_params_linear$b <- density_params$b - 0.5
   }
   else {
-    density_params_linear$sd <- density_params$sd + 0.5
+    density_params_linear$sd <- density_params$sd + 0.25
   }
   return(density_params_linear)
 }

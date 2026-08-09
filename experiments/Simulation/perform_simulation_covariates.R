@@ -14,13 +14,13 @@ covariance_types <- c("Vc", "Vp")
 
 spline_order <- 4
 scenarios <- list(
-  densities = list(list(density_name = "truncated_normal", mean = 0.1, sd = 1,
+  densities = list(list(density_name = "truncated_normal", mean = 0.1, sd = 0.5,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 0.1, sd = 1,
+                   list(density_name = "truncated_normal", mean = 0.1, sd = 0.5,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 0.5, sd = 2,
+                   list(density_name = "truncated_normal", mean = 0.5, sd = 1,
                         n_knots = 10),
-                   list(density_name = "truncated_normal", mean = 0.5, sd = 2,
+                   list(density_name = "truncated_normal", mean = 0.5, sd = 1,
                         n_knots = 10)),
   seed = 1542,
   n_obs = c(50000, 150000, 500000, 1000000),
